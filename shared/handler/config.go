@@ -28,7 +28,7 @@ type Config struct {
 	// Environment (development, staging, production)
 	Environment string
 
-	// Platform identifier (http, knative, openfaas, lambda)
+	// Platform identifier (http, KEDA, lambda)
 	Platform string
 
 	// RetryConfig for retry middleware

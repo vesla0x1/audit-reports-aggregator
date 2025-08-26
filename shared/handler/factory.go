@@ -2,9 +2,6 @@ package handler
 
 import (
 	"os"
-	"strconv"
-	"time"
-
 	"shared/observability"
 )
 
@@ -59,12 +56,9 @@ func (f *Factory) CreateHTTP() *Handler {
 	return f.Create()
 }
 
-// CreateOpenFaaS creates a handler specifically for OpenFaaS.
-func (f *Factory) CreateOpenFaaS() *Handler {
-	f.config.Platform = "openfaas"
-	if timeout := getOpenFaaSTimeout(); timeout > 0 {
-		f.config.Timeout = timeout
-	}
+// CreateLambda creates a handler specifically for AWS Lambda.
+func (f *Factory) CreateLambda() *Handler {
+	f.config.Platform = "lambda"
 	return f.Create()
 }
 
@@ -101,43 +95,17 @@ func (f *Factory) applyDefaultMiddleware(handler *Handler) {
 
 // DetectPlatform attempts to detect the runtime platform from environment.
 func DetectPlatform() string {
-	// OpenFaaS
-	if os.Getenv("OPENFAAS_FUNCTION_NAME") != "" {
-		return "openfaas"
+
+	// Check for Lambda runtime
+	if _, exists := os.LookupEnv("AWS_LAMBDA_FUNCTION_NAME"); exists {
+		return "lambda"
 	}
 
-	// Knative
-	if os.Getenv("K_SERVICE") != "" {
-		return "knative"
+	// Check for Lambda runtime API (another Lambda indicator)
+	if _, exists := os.LookupEnv("AWS_LAMBDA_RUNTIME_API"); exists {
+		return "lambda"
 	}
 
 	// Default to HTTP
 	return "http"
-}
-
-// getOpenFaaSTimeout extracts timeout from OpenFaaS environment.
-func getOpenFaaSTimeout() time.Duration {
-	// Check multiple possible timeout sources
-	timeoutSources := []string{
-		"OPENFAAS_TIMEOUT",
-		"timeout",
-		"exec_timeout",
-		"function_timeout",
-	}
-
-	for _, source := range timeoutSources {
-		if timeoutStr := os.Getenv(source); timeoutStr != "" {
-			// Try parsing as duration (e.g., "30s")
-			if timeout, err := time.ParseDuration(timeoutStr); err == nil {
-				return timeout
-			}
-			// Try parsing as seconds
-			if seconds, err := strconv.Atoi(timeoutStr); err == nil {
-				return time.Duration(seconds) * time.Second
-			}
-		}
-	}
-
-	// Default OpenFaaS timeout
-	return 30 * time.Second
 }

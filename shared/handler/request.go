@@ -9,12 +9,12 @@ import (
 
 // Request represents a generic incoming request to a worker.
 // It provides a platform-agnostic way to handle different input formats
-// from various sources (HTTP, Lambda, OpenFaaS, etc.).
+// from various sources (HTTP or Lambda).
 type Request struct {
 	// ID is a unique identifier for the request (for tracing)
 	ID string `json:"id"`
 
-	// Source identifies where the request came from (http, lambda, openfaas, etc.)
+	// Source identifies where the request came from
 	Source string `json:"source"`
 
 	// Type identifies the type of request/event (e.g., "download", "process")

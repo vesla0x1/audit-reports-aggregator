@@ -84,18 +84,25 @@ func main() {
 
 	// Start platform adapter
 	switch platform {
-	case "openfaas":
-		// OpenFaaS mode
-		adapter := platforms.NewOpenFaaSAdapter(h)
+	case "lambda":
+		// Lambda mode
+		logger.Info(context.Background(), "Starting Lambda runtime", observability.Fields{
+			"mode":          "lambda",
+			"function_name": utils.GetEnv("AWS_LAMBDA_FUNCTION_NAME", "unknown"),
+			"memory_size":   utils.GetEnv("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "unknown"),
+		})
 
-		// Monitor for shutdown in a goroutine
-		go func() {
-			<-shutdownChan
-			gracefulShutdown(logger, metrics, startTime)
-		}()
+		// Configure Lambda adapter
+		lambdaConfig := &platforms.LambdaConfig{
+			MaxConcurrency:            utils.GetEnvInt("LAMBDA_MAX_CONCURRENCY", 10),
+			ProcessingTimeout:         utils.GetEnvDuration("LAMBDA_PROCESSING_TIMEOUT", "30s"),
+			EnablePartialBatchFailure: utils.GetEnvBool("LAMBDA_PARTIAL_BATCH_FAILURE", true),
+			AutoBase64Decode:          utils.GetEnvBool("LAMBDA_AUTO_BASE64_DECODE", true),
+		}
 
-		// Run adapter (blocking)
-		adapter.Run()
+		// Create and start Lambda adapter
+		adapter := platforms.NewLambdaAdapter(h, lambdaConfig)
+		adapter.Start() // This blocks until Lambda runtime stops
 	default:
 		// HTTP mode
 		addr := utils.GetEnv("HTTP_ADDR", ":8080")

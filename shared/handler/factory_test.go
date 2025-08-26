@@ -60,33 +60,12 @@ func TestFactory_CreateHTTP(t *testing.T) {
 	assert.Equal(t, "http", handler.config.Platform)
 }
 
-func TestFactory_CreateOpenFaaS(t *testing.T) {
-	worker := &TestWorker{name: "test"}
-	provider := new(mocks.MockProvider)
-
-	factory := NewFactory(worker, provider)
-	handler := factory.CreateOpenFaaS()
-
-	assert.NotNil(t, handler)
-	assert.Equal(t, "openfaas", handler.config.Platform)
-}
-
 func TestDetectPlatform(t *testing.T) {
 	tests := []struct {
 		name     string
 		envVars  map[string]string
 		expected string
 	}{
-		{
-			name:     "OpenFaaS",
-			envVars:  map[string]string{"OPENFAAS_FUNCTION_NAME": "my-function"},
-			expected: "openfaas",
-		},
-		{
-			name:     "Knative",
-			envVars:  map[string]string{"K_SERVICE": "my-service"},
-			expected: "knative",
-		},
 		{
 			name:     "Default",
 			envVars:  map[string]string{},
