@@ -1,0 +1,38 @@
+services:
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: localstack_main
+    ports:
+      - "${LOCALSTACK_PORT:-4566}:4566"
+      - "${LOCALSTACK_PORT_RANGE:-4510-4559}:4510-4559"
+    environment:
+      - SERVICES=${LOCALSTACK_SERVICES:-sqs,s3,lambda,iam,logs}
+      - DEBUG=${LOCALSTACK_DEBUG:-0}
+      - DATA_DIR=${LOCALSTACK_DATA_DIR:-/var/lib/localstack/data}
+      - LAMBDA_EXECUTOR=${LOCALSTACK_LAMBDA_EXECUTOR:-docker-reuse}
+      - LAMBDA_REMOTE_DOCKER=${LOCALSTACK_LAMBDA_REMOTE_DOCKER:-true}
+      - LAMBDA_REMOVE_CONTAINERS=${LOCALSTACK_LAMBDA_REMOVE_CONTAINERS:-true}
+      - DOCKER_HOST=${LOCALSTACK_DOCKER_HOST:-unix:///var/run/docker.sock}
+      - AWS_DEFAULT_REGION=${LOCALSTACK_AWS_DEFAULT_REGION:-us-east-1}
+      - PERSISTENCE=${LOCALSTACK_PERSISTENCE:-1}
+      - EAGER_SERVICE_LOADING=${LOCALSTACK_EAGER_SERVICE_LOADING:-1}
+      - LOCALSTACK_HOST=${LOCALSTACK_HOST:-localhost:4566}
+      - TMPDIR=${LOCALSTACK_TMPDIR:-/var/lib/localstack/tmp}
+    volumes:
+      - "${LOCALSTACK_TMPDIR:-./tmp}/localstack:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - ${DOCKER_NETWORK:-audit-network}
+
+volumes:
+  terraform_cache:
+
+networks:
+  audit-network:
+    driver: bridge
