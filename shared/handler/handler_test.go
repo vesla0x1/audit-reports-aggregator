@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"shared/config"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -31,24 +33,25 @@ func (m *mockWorker) Health(ctx context.Context) error {
 
 func TestNewHandler(t *testing.T) {
 	worker := &mockWorker{}
-	config := DefaultConfig()
+	cfg := config.DefaultHandlerConfig()
 
-	handler := NewHandler(worker, nil, config)
+	handler := NewHandler(worker, nil, &cfg)
 
 	assert.NotNil(t, handler)
 	assert.Equal(t, worker, handler.worker)
-	assert.Equal(t, config, handler.config)
+	assert.Equal(t, &cfg, handler.config)
 	assert.Empty(t, handler.middlewares)
 }
 
-func TestNewHandler_NilConfig(t *testing.T) {
+func TestNewHandler_WithConfig(t *testing.T) {
 	worker := &mockWorker{}
+	cfg := config.DefaultHandlerConfig()
 
-	handler := NewHandler(worker, nil, nil)
+	handler := NewHandler(worker, nil, &cfg)
 
 	assert.NotNil(t, handler)
 	assert.NotNil(t, handler.config)
-	assert.Equal(t, DefaultConfig(), handler.config)
+	assert.Equal(t, &cfg, handler.config)
 }
 
 func TestHandler_Handle(t *testing.T) {
@@ -67,7 +70,8 @@ func TestHandler_Handle(t *testing.T) {
 
 	worker.On("Process", mock.Anything, req).Return(expectedResp, nil)
 
-	handler := NewHandler(worker, nil, DefaultConfig())
+	cfg := config.DefaultHandlerConfig()
+	handler := NewHandler(worker, nil, &cfg)
 
 	ctx := context.Background()
 	resp, err := handler.Handle(ctx, req)
@@ -89,7 +93,8 @@ func TestHandler_Handle_WithError(t *testing.T) {
 	expectedErr := errors.New("processing failed")
 	worker.On("Process", mock.Anything, req).Return(Response{}, expectedErr)
 
-	handler := NewHandler(worker, nil, DefaultConfig())
+	cfg := config.DefaultHandlerConfig()
+	handler := NewHandler(worker, nil, &cfg)
 
 	ctx := context.Background()
 	_, err := handler.Handle(ctx, req)
@@ -114,8 +119,9 @@ func TestHandler_ContextValues(t *testing.T) {
 		capturedCtx = args.Get(0).(context.Context)
 	}).Return(Response{ID: "test-123", Success: true}, nil)
 
-	config := &Config{Platform: "http"}
-	handler := NewHandler(worker, nil, config)
+	cfg := config.DefaultHandlerConfig()
+	cfg.Platform = "http"
+	handler := NewHandler(worker, nil, &cfg)
 
 	ctx := context.Background()
 	_, err := handler.Handle(ctx, req)
@@ -127,7 +133,8 @@ func TestHandler_ContextValues(t *testing.T) {
 }
 
 func TestHandler_Use(t *testing.T) {
-	handler := NewHandler(&mockWorker{}, nil, DefaultConfig())
+	defaultCfg := config.DefaultHandlerConfig()
+	handler := NewHandler(&mockWorker{}, nil, &defaultCfg)
 
 	// Add middleware
 	middleware1 := func(next HandlerFunc) HandlerFunc {
@@ -179,7 +186,8 @@ func TestHandler_MiddlewareChain(t *testing.T) {
 		executionOrder = append(executionOrder, "worker")
 	}).Return(Response{ID: "test-123", Success: true}, nil)
 
-	handler := NewHandler(worker, nil, DefaultConfig())
+	cfg := config.DefaultHandlerConfig()
+	handler := NewHandler(worker, nil, &cfg)
 	handler.Use(middleware1)
 	handler.Use(middleware2)
 
@@ -200,7 +208,8 @@ func TestHandler_Health(t *testing.T) {
 	worker := &mockWorker{}
 	worker.On("Health", mock.Anything).Return(nil)
 
-	handler := NewHandler(worker, nil, DefaultConfig())
+	cfg := config.DefaultHandlerConfig()
+	handler := NewHandler(worker, nil, &cfg)
 
 	ctx := context.Background()
 	err := handler.Health(ctx)
@@ -214,7 +223,8 @@ func TestHandler_Health_WithError(t *testing.T) {
 	expectedErr := errors.New("unhealthy")
 	worker.On("Health", mock.Anything).Return(expectedErr)
 
-	handler := NewHandler(worker, nil, DefaultConfig())
+	cfg := config.DefaultHandlerConfig()
+	handler := NewHandler(worker, nil, &cfg)
 
 	ctx := context.Background()
 	err := handler.Health(ctx)

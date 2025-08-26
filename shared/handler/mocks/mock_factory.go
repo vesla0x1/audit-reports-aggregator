@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"shared/config"
 	"shared/handler"
 
 	"github.com/stretchr/testify/mock"
@@ -30,8 +31,14 @@ func (m *MockFactory) CreateHTTP() *handler.Handler {
 	return nil
 }
 
-// WithConfig mocks configuration setting
-func (m *MockFactory) WithConfig(config *handler.Config) *MockFactory {
-	m.Called(config)
+// WithHandlerConfig mocks handler configuration setting
+func (m *MockFactory) WithHandlerConfig(cfg config.HandlerConfig) *MockFactory {
+	m.Called(cfg)
+	return m
+}
+
+// WithRetryConfig mocks retry configuration setting
+func (m *MockFactory) WithRetryConfig(cfg config.RetryConfig) *MockFactory {
+	m.Called(cfg)
 	return m
 }

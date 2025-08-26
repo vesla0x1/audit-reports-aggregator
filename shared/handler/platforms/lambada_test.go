@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
+	"shared/config"
 	"shared/handler"
 	"shared/handler/mocks"
 	obmocks "shared/observability/mocks"
@@ -36,7 +37,8 @@ func TestLambdaAdapter_HandleSQSEvent(t *testing.T) {
 		mockProvider.On("Metrics", mock.Anything).Return(mockMetrics)
 
 		// Create handler and adapter
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewLambdaAdapter(h, nil)
 
 		// Create SQS event
@@ -97,7 +99,8 @@ func TestLambdaAdapter_HandleSQSEvent(t *testing.T) {
 		mockProvider.On("Metrics", mock.Anything).Return(mockMetrics)
 
 		// Create handler and adapter with partial batch failure enabled
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		defaultCfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &defaultCfg)
 		config := &LambdaConfig{
 			EnablePartialBatchFailure: true,
 		}
@@ -141,7 +144,8 @@ func TestLambdaAdapter_HandleEvent(t *testing.T) {
 		mockProvider.On("Metrics", mock.Anything).Return(&obmocks.MockMetrics{})
 
 		// Create handler and adapter
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewLambdaAdapter(h, nil)
 
 		// Create SQS event
@@ -179,7 +183,8 @@ func TestLambdaAdapter_HandleEvent(t *testing.T) {
 		mockProvider := &obmocks.MockProvider{}
 
 		// Create handler and adapter
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewLambdaAdapter(h, nil)
 
 		// Create unsupported event

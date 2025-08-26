@@ -5,6 +5,7 @@ go 1.24.3
 require (
 	github.com/aws/aws-lambda-go v1.49.0
 	github.com/google/uuid v1.6.0
+	github.com/joho/godotenv v1.5.1
 	github.com/prometheus/client_golang v1.23.0
 	github.com/stretchr/testify v1.10.0
 )

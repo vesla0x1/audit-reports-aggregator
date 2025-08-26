@@ -2,6 +2,7 @@ package handler
 
 import (
 	"os"
+	"shared/config"
 	"shared/observability"
 )
 
@@ -9,24 +10,32 @@ import (
 // This is the main entry point for creating handlers with proper
 // configuration and middleware setup.
 type Factory struct {
-	worker   Worker
-	provider observability.Provider
-	config   *Config
+	worker     Worker
+	provider   observability.Provider
+	handlerCfg config.HandlerConfig
+	retryCfg   config.RetryConfig
 }
 
-// NewFactory creates a new handler factory.
+// NewFactory creates a new handler factory with sensible defaults.
 // This is the recommended way to create handlers.
 func NewFactory(worker Worker, provider observability.Provider) *Factory {
 	return &Factory{
-		worker:   worker,
-		provider: provider,
-		config:   ConfigFromEnv(),
+		worker:     worker,
+		provider:   provider,
+		handlerCfg: config.DefaultHandlerConfig(),
+		retryCfg:   config.DefaultRetryConfig(),
 	}
 }
 
-// WithConfig sets custom configuration.
-func (f *Factory) WithConfig(config *Config) *Factory {
-	f.config = config
+// WithHandlerConfig sets custom handler configuration.
+func (f *Factory) WithHandlerConfig(config config.HandlerConfig) *Factory {
+	f.handlerCfg = config
+	return f
+}
+
+// WithRetryConfig sets custom retry configuration.
+func (f *Factory) WithRetryConfig(config config.RetryConfig) *Factory {
+	f.retryCfg = config
 	return f
 }
 
@@ -34,15 +43,12 @@ func (f *Factory) WithConfig(config *Config) *Factory {
 // This automatically detects the platform and creates the appropriate handler.
 func (f *Factory) Create() *Handler {
 	// Detect platform if not set
-	if f.config.Platform == "" || f.config.Platform == "auto" {
-		f.config.Platform = DetectPlatform()
+	if f.handlerCfg.Platform == "" || f.handlerCfg.Platform == "auto" {
+		f.handlerCfg.Platform = DetectPlatform()
 	}
 
-	// Validate configuration
-	f.config.Validate()
-
 	// Create handler
-	handler := NewHandler(f.worker, f.provider, f.config)
+	handler := NewHandler(f.worker, f.provider, &f.handlerCfg)
 
 	// Add default middleware stack
 	f.applyDefaultMiddleware(handler)
@@ -52,13 +58,13 @@ func (f *Factory) Create() *Handler {
 
 // CreateHTTP creates a handler specifically for HTTP/Knative.
 func (f *Factory) CreateHTTP() *Handler {
-	f.config.Platform = "http"
+	f.handlerCfg.Platform = "http"
 	return f.Create()
 }
 
 // CreateLambda creates a handler specifically for AWS Lambda.
 func (f *Factory) CreateLambda() *Handler {
-	f.config.Platform = "lambda"
+	f.handlerCfg.Platform = "lambda"
 	return f.Create()
 }
 
@@ -67,17 +73,17 @@ func (f *Factory) applyDefaultMiddleware(handler *Handler) {
 	// Recovery middleware (outermost - catches all panics)
 	handler.Use(RecoveryMiddleware(f.provider))
 
-	if f.config.Timeout > 0 {
-		handler.Use(TimeoutMiddleware(f.config.Timeout))
+	if f.handlerCfg.Timeout > 0 {
+		handler.Use(TimeoutMiddleware(f.handlerCfg.Timeout))
 	}
 
 	// Tracing middleware
-	if f.config.EnableTracing {
+	if f.handlerCfg.EnableTracing {
 		handler.Use(TracingMiddleware())
 	}
 
 	// Metrics middleware
-	if f.config.EnableMetrics {
+	if f.handlerCfg.EnableMetrics {
 		handler.Use(MetricsMiddleware(f.provider))
 	}
 
@@ -87,9 +93,9 @@ func (f *Factory) applyDefaultMiddleware(handler *Handler) {
 	// Validation middleware
 	handler.Use(ValidationMiddleware())
 
-	// Retry middleware (if configured)
-	if f.config.RetryConfig != nil && f.config.RetryConfig.MaxRetries > 0 {
-		handler.Use(RetryMiddleware(f.config.RetryConfig))
+	// Retry middleware (if enabled)
+	if f.retryCfg.MaxAttempts > 0 {
+		handler.Use(RetryMiddleware(&f.retryCfg))
 	}
 }
 

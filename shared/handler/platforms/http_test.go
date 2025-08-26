@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"shared/config"
 	"shared/handler"
 	"shared/handler/mocks"
-	"shared/observability"
 	obmocks "shared/observability/mocks"
 
 	"github.com/stretchr/testify/assert"
@@ -44,7 +44,8 @@ func TestHTTPAdapter_ServeHTTP(t *testing.T) {
 		mockLogger.On("Warn", mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		// Create real handler with mocked dependencies
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewHTTPAdapter(h)
 
 		// Prepare request
@@ -80,7 +81,8 @@ func TestHTTPAdapter_ServeHTTP(t *testing.T) {
 		mockProvider := &obmocks.MockProvider{}
 
 		// Create real handler
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewHTTPAdapter(h)
 
 		// Execute health check
@@ -110,7 +112,8 @@ func TestHTTPAdapter_ServeHTTP(t *testing.T) {
 		mockProvider := &obmocks.MockProvider{}
 
 		// Create real handler
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewHTTPAdapter(h)
 
 		// Execute health check
@@ -150,7 +153,8 @@ func TestHTTPAdapter_ServeHTTP(t *testing.T) {
 		mockLogger.On("Warn", mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		// Create real handler
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewHTTPAdapter(h)
 
 		// Execute request
@@ -189,7 +193,8 @@ func TestHTTPAdapter_ServeHTTP(t *testing.T) {
 		mockLogger.On("Info", mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		// Create real handler
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewHTTPAdapter(h)
 
 		// Execute request without X-Request-ID header
@@ -220,7 +225,8 @@ func TestHTTPAdapter_ServeHTTP(t *testing.T) {
 		mockLogger.On("Info", mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		// Create real handler
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewHTTPAdapter(h)
 
 		// Execute
@@ -243,10 +249,9 @@ func TestHTTPAdapter_ServeHTTP(t *testing.T) {
 		mockProvider := &obmocks.MockProvider{}
 
 		// Create handler with small max request size
-		config := &handler.Config{
-			MaxRequestSize: 100, // 100 bytes limit
-		}
-		h := handler.NewHandler(mockWorker, mockProvider, config)
+		cfg := config.DefaultHandlerConfig()
+		cfg.MaxRequestSize = 100 // 100 bytes limit
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewHTTPAdapter(h)
 
 		// Create a body larger than limit
@@ -280,7 +285,8 @@ func TestHTTPAdapter_ServeHTTP(t *testing.T) {
 		mockLogger.On("Info", mock.Anything, mock.Anything, mock.Anything).Maybe()
 
 		// Create real handler
-		h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+		cfg := config.DefaultHandlerConfig()
+		h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 		adapter := NewHTTPAdapter(h)
 
 		// Execute
@@ -301,7 +307,8 @@ func TestHTTPAdapter_DetermineStatusCode(t *testing.T) {
 	mockWorker := &mocks.MockWorker{}
 	mockWorker.On("Name").Return("test-worker")
 	mockProvider := &obmocks.MockProvider{}
-	h := handler.NewHandler(mockWorker, mockProvider, handler.DefaultConfig())
+	cfg := config.DefaultHandlerConfig()
+	h := handler.NewHandler(mockWorker, mockProvider, &cfg)
 	adapter := NewHTTPAdapter(h)
 
 	tests := []struct {
@@ -357,15 +364,4 @@ func TestHTTPAdapter_DetermineStatusCode(t *testing.T) {
 			assert.Equal(t, tt.expected, status)
 		})
 	}
-}
-
-// Helper function to create a test handler with minimal setup
-func createTestHandler(worker handler.Worker, provider observability.Provider) *handler.Handler {
-	if provider == nil {
-		provider = &obmocks.MockProvider{}
-	}
-	if worker == nil {
-		worker = &mocks.MockWorker{}
-	}
-	return handler.NewHandler(worker, provider, handler.DefaultConfig())
 }

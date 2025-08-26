@@ -12,18 +12,23 @@ import (
 	"downloader/internal/service"
 	"downloader/internal/worker"
 
+	"shared/config"
 	"shared/handler"
 	"shared/handler/platforms"
 	"shared/observability"
-	"shared/utils"
 )
 
 func main() {
+	// Load centralized configuration
+	cfgProvider := config.GetProvider()
+	cfgProvider.MustLoad()
+	cfg := cfgProvider.MustGet()
+
 	// Initialize observability
 	obsConfig := &observability.Config{
-		ServiceName: "downloader-worker",
-		Environment: utils.GetEnv("ENVIRONMENT", "development"),
-		LogLevel:    utils.GetEnv("LOG_LEVEL", "info"),
+		ServiceName: cfg.ServiceName,
+		Environment: cfg.Environment,
+		LogLevel:    cfg.LogLevel,
 		LogOutput:   os.Stdout,
 	}
 
@@ -36,17 +41,15 @@ func main() {
 	metrics.RecordSuccess("service_start")
 
 	logger.Info(context.Background(), "Starting downloader worker", observability.Fields{
-		"service":     obsConfig.ServiceName,
-		"environment": obsConfig.Environment,
+		"service":     cfg.ServiceName,
+		"environment": cfg.Environment,
 	})
 
-	// Initialize HTTP client with timeout tracking
-	httpTimeout := utils.GetEnvDuration("HTTP_TIMEOUT", "120s")
-	httpClient := httpAdapter.NewClient(httpAdapter.ClientConfig{
-		Timeout:    httpTimeout,
-		MaxRetries: utils.GetEnvInt("HTTP_MAX_RETRIES", 3),
-		UserAgent:  utils.GetEnv("HTTP_USER_AGENT", "audit-reports-downloader/1.0"),
-	})
+	// Initialize HTTP client with defaults, then override with config
+	httpClient := httpAdapter.NewClient()
+	if cfg != nil {
+		httpClient.WithConfig(cfg.HTTP)
+	}
 
 	// Initialize download service
 	downloadService := service.NewDownloadService(
@@ -62,8 +65,13 @@ func main() {
 		obsProvider.Metrics("worker"),
 	)
 
-	// Create handler factory
+	// Create handler factory with defaults
 	factory := handler.NewFactory(downloaderWorker, obsProvider)
+
+	// Override with centralized config if available
+	if cfg != nil {
+		factory.WithHandlerConfig(cfg.Handler).WithRetryConfig(cfg.Retry)
+	}
 
 	// Detect platform
 	platform := handler.DetectPlatform()
@@ -88,16 +96,16 @@ func main() {
 		// Lambda mode
 		logger.Info(context.Background(), "Starting Lambda runtime", observability.Fields{
 			"mode":          "lambda",
-			"function_name": utils.GetEnv("AWS_LAMBDA_FUNCTION_NAME", "unknown"),
-			"memory_size":   utils.GetEnv("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "unknown"),
+			"function_name": os.Getenv("AWS_LAMBDA_FUNCTION_NAME"),
+			"memory_size":   os.Getenv("AWS_LAMBDA_FUNCTION_MEMORY_SIZE"),
 		})
 
 		// Configure Lambda adapter
 		lambdaConfig := &platforms.LambdaConfig{
-			MaxConcurrency:            utils.GetEnvInt("LAMBDA_MAX_CONCURRENCY", 10),
-			ProcessingTimeout:         utils.GetEnvDuration("LAMBDA_PROCESSING_TIMEOUT", "30s"),
-			EnablePartialBatchFailure: utils.GetEnvBool("LAMBDA_PARTIAL_BATCH_FAILURE", true),
-			AutoBase64Decode:          utils.GetEnvBool("LAMBDA_AUTO_BASE64_DECODE", true),
+			MaxConcurrency:            cfg.Lambda.MaxConcurrency,
+			ProcessingTimeout:         cfg.Lambda.ProcessingTimeout,
+			EnablePartialBatchFailure: cfg.Lambda.EnablePartialBatchFailure,
+			AutoBase64Decode:          cfg.Lambda.AutoBase64Decode,
 		}
 
 		// Create and start Lambda adapter
@@ -105,9 +113,8 @@ func main() {
 		adapter.Start() // This blocks until Lambda runtime stops
 	default:
 		// HTTP mode
-		addr := utils.GetEnv("HTTP_ADDR", ":8080")
 		logger.Info(context.Background(), "Starting HTTP server", observability.Fields{
-			"address": addr,
+			"address": cfg.HTTP.Addr,
 			"mode":    "http",
 		})
 
@@ -115,7 +122,7 @@ func main() {
 		// Start server in a goroutine
 		serverErrChan := make(chan error, 1)
 		go func() {
-			if err := adapter.Serve(addr); err != nil {
+			if err := adapter.Serve(cfg.HTTP.Addr); err != nil {
 				serverErrChan <- err
 			}
 		}()
@@ -140,7 +147,7 @@ func main() {
 			os.Exit(0)
 		}()
 
-		if err := adapter.Serve(addr); err != nil {
+		if err := adapter.Serve(cfg.HTTP.Addr); err != nil {
 			log.Fatalf("Server error: %v", err)
 		}
 	}

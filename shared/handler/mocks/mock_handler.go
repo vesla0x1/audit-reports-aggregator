@@ -3,6 +3,7 @@ package mocks
 import (
 	"context"
 
+	"shared/config"
 	"shared/handler"
 
 	"github.com/stretchr/testify/mock"
@@ -12,20 +13,21 @@ import (
 // Use this to test platform adapters without real handler logic.
 type MockHandler struct {
 	mock.Mock
-	config *handler.Config
+	config *config.HandlerConfig
 	worker handler.Worker
 }
 
 // NewMockHandler creates a new mock handler with optional config
-func NewMockHandler(config *handler.Config, worker handler.Worker) *MockHandler {
-	if config == nil {
-		config = handler.DefaultConfig()
+func NewMockHandler(cfg *config.HandlerConfig, worker handler.Worker) *MockHandler {
+	if cfg == nil {
+		defaultCfg := config.DefaultHandlerConfig()
+		cfg = &defaultCfg
 	}
 	if worker == nil {
 		worker = &MockWorker{}
 	}
 	return &MockHandler{
-		config: config,
+		config: cfg,
 		worker: worker,
 	}
 }
@@ -43,7 +45,7 @@ func (m *MockHandler) Health(ctx context.Context) error {
 }
 
 // Config returns the handler configuration
-func (m *MockHandler) Config() *handler.Config {
+func (m *MockHandler) Config() *config.HandlerConfig {
 	return m.config
 }
 

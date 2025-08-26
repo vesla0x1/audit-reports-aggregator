@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"shared/config"
 	"shared/observability/mocks"
 
 	"github.com/stretchr/testify/assert"
@@ -19,22 +20,36 @@ func TestNewFactory(t *testing.T) {
 	assert.NotNil(t, factory)
 	assert.Equal(t, worker, factory.worker)
 	assert.Equal(t, provider, factory.provider)
-	assert.NotNil(t, factory.config)
+	assert.NotNil(t, factory.handlerCfg)
+	assert.NotNil(t, factory.retryCfg)
 }
 
-func TestFactory_WithConfig(t *testing.T) {
+func TestFactory_WithHandlerConfig(t *testing.T) {
 	worker := &TestWorker{name: "test"}
 	provider := new(mocks.MockProvider)
 
-	customConfig := &Config{
-		Timeout:     60 * time.Second,
-		Environment: "production",
-		Platform:    "lambda",
+	customConfig := config.HandlerConfig{
+		Timeout:  60 * time.Second,
+		Platform: "lambda",
 	}
 
-	factory := NewFactory(worker, provider).WithConfig(customConfig)
+	factory := NewFactory(worker, provider).WithHandlerConfig(customConfig)
 
-	assert.Equal(t, customConfig, factory.config)
+	assert.Equal(t, customConfig, factory.handlerCfg)
+}
+
+func TestFactory_WithRetryConfig(t *testing.T) {
+	worker := &TestWorker{name: "test"}
+	provider := new(mocks.MockProvider)
+
+	retryConfig := config.RetryConfig{
+		MaxAttempts: 5,
+		InitialBackoff: 200 * time.Millisecond,
+	}
+
+	factory := NewFactory(worker, provider).WithRetryConfig(retryConfig)
+
+	assert.Equal(t, retryConfig, factory.retryCfg)
 }
 
 func TestFactory_Create(t *testing.T) {

@@ -6,45 +6,42 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"shared/config"
 )
-
-// ClientConfig holds HTTP client configuration
-type ClientConfig struct {
-	Timeout    time.Duration
-	MaxRetries int
-	UserAgent  string
-}
-
-// DefaultConfig returns default HTTP client configuration
-func DefaultConfig() ClientConfig {
-	return ClientConfig{
-		Timeout:    30 * time.Second,
-		MaxRetries: 3,
-		UserAgent:  "audit-reports-downloader/1.0",
-	}
-}
 
 // Client implements the HTTPClient port
 type Client struct {
 	client *http.Client
-	config ClientConfig
+	config config.HTTPConfig
 }
 
-// NewClient creates a new HTTP client
-func NewClient(config ClientConfig) *Client {
-	if config.Timeout == 0 {
-		config.Timeout = 30 * time.Second
-	}
-	if config.UserAgent == "" {
-		config.UserAgent = "audit-reports-downloader/1.0"
-	}
-
+// NewClient creates a new HTTP client with sensible defaults
+func NewClient() *Client {
+	cfg := config.DefaultHTTPConfig()
 	return &Client{
 		client: &http.Client{
-			Timeout: config.Timeout,
+			Timeout: cfg.Timeout,
 		},
-		config: config,
+		config: cfg,
 	}
+}
+
+// NewClientWithConfig creates a new HTTP client with custom configuration
+func NewClientWithConfig(cfg config.HTTPConfig) *Client {
+	return &Client{
+		client: &http.Client{
+			Timeout: cfg.Timeout,
+		},
+		config: cfg,
+	}
+}
+
+// WithConfig sets custom HTTP configuration
+func (c *Client) WithConfig(cfg config.HTTPConfig) *Client {
+	c.config = cfg
+	c.client.Timeout = cfg.Timeout
+	return c
 }
 
 // Download implements the HTTPClient interface

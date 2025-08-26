@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"shared/config"
 	"shared/observability/mocks"
 	"shared/observability/types"
 
@@ -363,7 +364,8 @@ func TestTracingMiddleware(t *testing.T) {
 func TestRetryMiddleware(t *testing.T) {
 	t.Run("success on first try", func(t *testing.T) {
 		callCount := 0
-		middleware := RetryMiddleware(DefaultRetryConfig())
+		retryConfig := config.DefaultRetryConfig()
+		middleware := RetryMiddleware(&retryConfig)
 
 		handler := middleware(func(ctx context.Context, req Request) (Response, error) {
 			callCount++
@@ -380,7 +382,8 @@ func TestRetryMiddleware(t *testing.T) {
 
 	t.Run("retry on failure then success", func(t *testing.T) {
 		callCount := 0
-		middleware := RetryMiddleware(DefaultRetryConfig())
+		retryConfig := config.DefaultRetryConfig()
+		middleware := RetryMiddleware(&retryConfig)
 
 		handler := middleware(func(ctx context.Context, req Request) (Response, error) {
 			callCount++
@@ -404,7 +407,8 @@ func TestRetryMiddleware(t *testing.T) {
 
 	t.Run("max retries exhausted", func(t *testing.T) {
 		callCount := 0
-		middleware := RetryMiddleware(DefaultRetryConfig())
+		retryConfig := config.DefaultRetryConfig()
+		middleware := RetryMiddleware(&retryConfig)
 
 		handler := middleware(func(ctx context.Context, req Request) (Response, error) {
 			callCount++
@@ -422,7 +426,8 @@ func TestRetryMiddleware(t *testing.T) {
 
 	t.Run("non-retryable error", func(t *testing.T) {
 		callCount := 0
-		middleware := RetryMiddleware(DefaultRetryConfig())
+		retryConfig := config.DefaultRetryConfig()
+		middleware := RetryMiddleware(&retryConfig)
 
 		handler := middleware(func(ctx context.Context, req Request) (Response, error) {
 			callCount++
@@ -439,13 +444,15 @@ func TestRetryMiddleware(t *testing.T) {
 
 	t.Run("context cancellation", func(t *testing.T) {
 		callCount := 0
-		middleware := RetryMiddleware(DefaultRetryConfig())
+		retryConfig := config.DefaultRetryConfig()
+		middleware := RetryMiddleware(&retryConfig)
 
 		handler := middleware(func(ctx context.Context, req Request) (Response, error) {
 			callCount++
 			return NewErrorResponse(req.ID, "TEMPORARY_ERROR", "Temporary failure", ""), nil
 		})
 
+		// Context cancels during the first retry backoff (after 1 call)
 		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 		defer cancel()
 

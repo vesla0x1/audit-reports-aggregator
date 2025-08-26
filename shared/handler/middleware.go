@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"time"
 
+	"shared/config"
 	"shared/observability"
 	"shared/observability/types"
 
@@ -238,13 +239,13 @@ func TimeoutMiddleware(timeout time.Duration) Middleware {
 
 // Retry adds retry logic for transient failures.
 // It uses exponential backoff between retry attempts.
-func RetryMiddleware(config *RetryConfig) Middleware {
+func RetryMiddleware(cfg *config.RetryConfig) Middleware {
 	return func(next HandlerFunc) HandlerFunc {
 		return func(ctx context.Context, req Request) (Response, error) {
 			var lastResp Response
 			var lastErr error
 
-			for attempt := 0; attempt <= config.MaxRetries; attempt++ {
+			for attempt := 0; attempt <= cfg.MaxAttempts; attempt++ {
 				// Add attempt number to context
 				attemptCtx := context.WithValue(ctx, "retry_attempt", attempt)
 
@@ -265,8 +266,8 @@ func RetryMiddleware(config *RetryConfig) Middleware {
 				lastErr = err
 
 				// Don't sleep after last attempt
-				if attempt < config.MaxRetries {
-					backoff := calculateBackoff(attempt, config)
+				if attempt < cfg.MaxAttempts {
+					backoff := calculateBackoff(attempt, cfg)
 
 					// Check context cancellation during backoff
 					select {
@@ -285,12 +286,12 @@ func RetryMiddleware(config *RetryConfig) Middleware {
 
 			// All retries exhausted
 			if lastErr != nil {
-				return lastResp, fmt.Errorf("max retries (%d) exceeded: %w", config.MaxRetries, lastErr)
+				return lastResp, fmt.Errorf("max retries (%d) exceeded: %w", cfg.MaxAttempts, lastErr)
 			}
 
 			// Update error message to indicate retries were exhausted
 			if lastResp.Error != nil {
-				lastResp.Error.Details = fmt.Sprintf("Failed after %d retries", config.MaxRetries)
+				lastResp.Error.Details = fmt.Sprintf("Failed after %d retries", cfg.MaxAttempts)
 			}
 
 			return lastResp, nil
@@ -388,12 +389,12 @@ func isRetryable(resp Response, err error) bool {
 }
 
 // calculateBackoff calculates the backoff duration for a retry attempt
-func calculateBackoff(attempt int, config *RetryConfig) time.Duration {
-	backoff := float64(config.InitialBackoff) * math.Pow(config.BackoffMultiplier, float64(attempt))
+func calculateBackoff(attempt int, cfg *config.RetryConfig) time.Duration {
+	backoff := float64(cfg.InitialBackoff) * math.Pow(cfg.BackoffMultiplier, float64(attempt))
 
 	// Cap at max backoff
-	if backoff > float64(config.MaxBackoff) {
-		backoff = float64(config.MaxBackoff)
+	if backoff > float64(cfg.MaxBackoff) {
+		backoff = float64(cfg.MaxBackoff)
 	}
 
 	return time.Duration(backoff)

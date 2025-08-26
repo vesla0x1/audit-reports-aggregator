@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"shared/config"
 	"shared/observability"
 )
 
@@ -14,7 +15,7 @@ type Handler struct {
 	worker      Worker
 	obs         observability.Provider
 	middlewares []Middleware
-	config      *Config
+	config      *config.HandlerConfig
 }
 
 // Middleware defines the interface for handler middleware.
@@ -27,11 +28,7 @@ type HandlerFunc func(ctx context.Context, req Request) (Response, error)
 
 // NewHandler creates a new handler with the given worker and configuration.
 // This is the low-level constructor - most users should use the Factory instead.
-func NewHandler(worker Worker, provider observability.Provider, config *Config) *Handler {
-	if config == nil {
-		config = DefaultConfig()
-	}
-
+func NewHandler(worker Worker, provider observability.Provider, config *config.HandlerConfig) *Handler {
 	return &Handler{
 		worker:      worker,
 		obs:         provider,
@@ -124,7 +121,7 @@ func (h *Handler) Health(ctx context.Context) error {
 }
 
 // Config returns the handler configuration.
-func (h *Handler) Config() *Config {
+func (h *Handler) Config() *config.HandlerConfig {
 	return h.config
 }
 
