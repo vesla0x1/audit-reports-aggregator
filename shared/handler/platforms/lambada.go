@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"shared/config"
 	"shared/handler"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -20,34 +21,24 @@ type LambdaAdapter struct {
 
 // LambdaConfig contains Lambda-specific configuration
 type LambdaConfig struct {
-	// MaxConcurrency for parallel message processing
-	MaxConcurrency int
 	// ProcessingTimeout for individual messages
-	ProcessingTimeout time.Duration
+	Timeout time.Duration
 	// EnablePartialBatchFailure allows reporting individual message failures
 	EnablePartialBatchFailure bool
-	// AutoBase64Decode handles base64 encoded SQS message bodies
-	AutoBase64Decode bool
 }
 
 // NewLambdaAdapter creates a new Lambda adapter
-func NewLambdaAdapter(h *handler.Handler, config *LambdaConfig) *LambdaAdapter {
-	if config == nil {
-		config = DefaultLambdaConfig()
+func NewLambdaAdapter(h *handler.Handler, cfg *LambdaConfig) *LambdaAdapter {
+	if cfg == nil {
+		defaultCfg := config.DefaultLambdaConfig()
+		cfg = &LambdaConfig{
+			Timeout:                   defaultCfg.Timeout,
+			EnablePartialBatchFailure: defaultCfg.EnablePartialBatchFailure,
+		}
 	}
 	return &LambdaAdapter{
 		handler: h,
-		config:  config,
-	}
-}
-
-// DefaultLambdaConfig returns default Lambda configuration
-func DefaultLambdaConfig() *LambdaConfig {
-	return &LambdaConfig{
-		MaxConcurrency:            10,
-		ProcessingTimeout:         30 * time.Second,
-		EnablePartialBatchFailure: true,
-		AutoBase64Decode:          true,
+		config:  cfg,
 	}
 }
 
@@ -98,9 +89,9 @@ func (a *LambdaAdapter) processSQSMessage(ctx context.Context, record events.SQS
 	request := a.buildRequestFromSQS(record)
 
 	// Add timeout if configured
-	if a.config.ProcessingTimeout > 0 {
+	if a.config.Timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, a.config.ProcessingTimeout)
+		ctx, cancel = context.WithTimeout(ctx, a.config.Timeout)
 		defer cancel()
 	}
 

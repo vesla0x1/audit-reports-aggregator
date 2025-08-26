@@ -102,10 +102,8 @@ func main() {
 
 		// Configure Lambda adapter
 		lambdaConfig := &platforms.LambdaConfig{
-			MaxConcurrency:            cfg.Lambda.MaxConcurrency,
-			ProcessingTimeout:         cfg.Lambda.ProcessingTimeout,
+			Timeout:                   cfg.Lambda.Timeout,
 			EnablePartialBatchFailure: cfg.Lambda.EnablePartialBatchFailure,
-			AutoBase64Decode:          cfg.Lambda.AutoBase64Decode,
 		}
 
 		// Create and start Lambda adapter

@@ -153,12 +153,6 @@ func (p *Provider) parseConfig() (*Config, error) {
 		ServiceName: getEnv("SERVICE_NAME", "downloader-worker"),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
 
-		// AWS
-		AWS: AWSConfig{
-			Region:             getEnv("AWS_REGION", "us-east-1"),
-			LocalStackEndpoint: getEnv("LOCALSTACK_ENDPOINT", ""),
-		},
-
 		// HTTP Client
 		HTTP: HTTPConfig{
 			Timeout:    getDuration("HTTP_TIMEOUT", "120s"),
@@ -167,26 +161,10 @@ func (p *Provider) parseConfig() (*Config, error) {
 			Addr:       getEnv("HTTP_ADDR", ":8080"),
 		},
 
-		// Storage
-		Storage: StorageConfig{
-			S3Bucket: getEnv("S3_BUCKET", ""),
-		},
-
-		// Queue
-		Queue: QueueConfig{
-			DownloaderQueue: getEnv("SQS_QUEUE_NAME", ""),
-			DLQName:         getEnv("SQS_DLQ_NAME", ""),
-			ProcessorQueue:  getEnv("SQS_PROCESSOR_QUEUE_NAME", ""),
-		},
-
 		// Lambda
 		Lambda: LambdaConfig{
 			Timeout:                   getDuration("LAMBDA_TIMEOUT", "180s"),
-			MemorySize:                getInt("LAMBDA_MEMORY_SIZE", 512),
-			MaxConcurrency:            getInt("LAMBDA_MAX_CONCURRENCY", 10),
-			ProcessingTimeout:         getDuration("LAMBDA_PROCESSING_TIMEOUT", "30s"),
 			EnablePartialBatchFailure: getBool("LAMBDA_PARTIAL_BATCH_FAILURE", true),
-			AutoBase64Decode:          getBool("LAMBDA_AUTO_BASE64_DECODE", true),
 		},
 
 		// Handler

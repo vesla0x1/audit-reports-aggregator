@@ -14,19 +14,10 @@ type Config struct {
 	LogLevel    string
 
 	// Component configurations
-	AWS     AWSConfig
 	HTTP    HTTPConfig
-	Storage StorageConfig
-	Queue   QueueConfig
 	Lambda  LambdaConfig
 	Handler HandlerConfig
 	Retry   RetryConfig
-}
-
-// AWSConfig holds AWS-specific configuration
-type AWSConfig struct {
-	Region             string
-	LocalStackEndpoint string // Only for local development
 }
 
 // HTTPConfig holds HTTP client configuration
@@ -42,21 +33,10 @@ type StorageConfig struct {
 	S3Bucket string
 }
 
-// QueueConfig holds queue configuration
-type QueueConfig struct {
-	DownloaderQueue string
-	DLQName         string
-	ProcessorQueue  string
-}
-
 // LambdaConfig holds Lambda-specific configuration
 type LambdaConfig struct {
 	Timeout                   time.Duration
-	MemorySize                int
-	MaxConcurrency            int
-	ProcessingTimeout         time.Duration
 	EnablePartialBatchFailure bool
-	AutoBase64Decode          bool
 }
 
 // HandlerConfig holds handler configuration
@@ -80,22 +60,10 @@ type RetryConfig struct {
 // Validate validates the entire configuration
 func (c *Config) Validate() error {
 	var errors []string
-
 	// Core validations
 	if c.ServiceName == "" {
 		errors = append(errors, "SERVICE_NAME is required")
 	}
-
-	// Production-specific validations
-	if c.IsProduction() {
-		if c.Storage.S3Bucket == "" {
-			errors = append(errors, "S3_BUCKET is required in production")
-		}
-		if c.Queue.DownloaderQueue == "" {
-			errors = append(errors, "SQS_QUEUE_NAME is required in production")
-		}
-	}
-
 	// Range validations
 	if c.HTTP.Timeout <= 0 {
 		errors = append(errors, "HTTP_TIMEOUT must be positive")
@@ -105,9 +73,6 @@ func (c *Config) Validate() error {
 	}
 	if c.HTTP.MaxRetries < 0 {
 		errors = append(errors, "HTTP_MAX_RETRIES cannot be negative")
-	}
-	if c.Lambda.MemorySize < 128 || c.Lambda.MemorySize > 10240 {
-		errors = append(errors, "LAMBDA_MEMORY_SIZE must be between 128 and 10240 MB")
 	}
 	if c.Handler.MaxRequestSize <= 0 {
 		errors = append(errors, "HANDLER_MAX_REQUEST_SIZE must be positive")
@@ -128,22 +93,6 @@ func (c *Config) Validate() error {
 
 // applyDefaults applies environment-specific defaults
 func (c *Config) applyDefaults() {
-	env := strings.ToLower(c.Environment)
-
-	// Generate default resource names if not provided
-	if c.Storage.S3Bucket == "" {
-		c.Storage.S3Bucket = fmt.Sprintf("audit-reports-%s-downloads", env)
-	}
-	if c.Queue.DownloaderQueue == "" {
-		c.Queue.DownloaderQueue = fmt.Sprintf("audit-reports-%s-downloader", env)
-	}
-	if c.Queue.DLQName == "" {
-		c.Queue.DLQName = fmt.Sprintf("audit-reports-%s-downloader-dlq", env)
-	}
-	if c.Queue.ProcessorQueue == "" {
-		c.Queue.ProcessorQueue = fmt.Sprintf("audit-reports-%s-processor", env)
-	}
-
 	// Apply environment-specific defaults
 	if c.IsProduction() {
 		// More conservative settings for production

@@ -34,39 +34,11 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
-// DefaultAWSConfig returns sensible defaults for AWS configuration
-func DefaultAWSConfig() AWSConfig {
-	return AWSConfig{
-		Region:             "us-east-1",
-		LocalStackEndpoint: "",
-	}
-}
-
-// DefaultStorageConfig returns sensible defaults for storage configuration
-func DefaultStorageConfig() StorageConfig {
-	return StorageConfig{
-		S3Bucket: "", // Must be set by environment or override
-	}
-}
-
-// DefaultQueueConfig returns sensible defaults for queue configuration
-func DefaultQueueConfig() QueueConfig {
-	return QueueConfig{
-		DownloaderQueue: "", // Must be set by environment or override
-		DLQName:         "", // Must be set by environment or override
-		ProcessorQueue:  "", // Must be set by environment or override
-	}
-}
-
 // DefaultLambdaConfig returns sensible defaults for Lambda configuration
 func DefaultLambdaConfig() LambdaConfig {
 	return LambdaConfig{
 		Timeout:                   180 * time.Second,
-		MemorySize:                512,
-		MaxConcurrency:            10,
-		ProcessingTimeout:         30 * time.Second,
 		EnablePartialBatchFailure: true,
-		AutoBase64Decode:          true,
 	}
 }
 
@@ -80,10 +52,7 @@ func DefaultConfig() *Config {
 		LogLevel:    "info",
 
 		// Component configurations with defaults
-		AWS:     DefaultAWSConfig(),
 		HTTP:    DefaultHTTPConfig(),
-		Storage: DefaultStorageConfig(),
-		Queue:   DefaultQueueConfig(),
 		Lambda:  DefaultLambdaConfig(),
 		Handler: DefaultHandlerConfig(),
 		Retry:   DefaultRetryConfig(),
