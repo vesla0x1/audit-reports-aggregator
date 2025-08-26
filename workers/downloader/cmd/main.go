@@ -116,7 +116,7 @@ func main() {
 		// Wait for shutdown signal or server error
 		select {
 		case <-shutdownChan:
-			gracefulShutdown(logger, metrics, startTime)
+			handler.GracefulShutdown(logger, metrics, startTime)
 		case err := <-serverErrChan:
 			metrics.RecordError("service", "server_error")
 			logger.Error(context.Background(), "Server error", err, nil)
@@ -137,34 +137,4 @@ func main() {
 			log.Fatalf("Server error: %v", err)
 		}
 	}
-}
-
-// gracefulShutdown handles the shutdown process with proper metrics
-func gracefulShutdown(logger observability.Logger, metrics observability.Metrics, startTime time.Time) {
-	ctx := context.Background()
-
-	// Record shutdown initiation
-	metrics.RecordSuccess("shutdown_initiated")
-
-	logger.Info(ctx, "Shutting down gracefully", observability.Fields{
-		"uptime_seconds": time.Since(startTime).Seconds(),
-	})
-
-	// Create a timeout context for shutdown operations
-	shutdownCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	// Perform cleanup operations here
-	// For example: close database connections, flush logs, etc.
-
-	// Record final metrics
-	metrics.RecordDuration("service_uptime", time.Since(startTime).Seconds())
-	metrics.RecordSuccess("shutdown_complete")
-
-	logger.Info(shutdownCtx, "Shutdown complete", nil)
-
-	// Give time for final metrics to be sent
-	time.Sleep(2 * time.Second)
-
-	os.Exit(0)
 }

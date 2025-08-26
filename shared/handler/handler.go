@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"os"
+	"time"
 
 	"shared/observability"
 )
@@ -63,6 +65,36 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Response, error) {
 	ctx = context.WithValue(ctx, "platform", h.config.Platform)
 
 	return handler(ctx, req)
+}
+
+// gracefulShutdown handles the shutdown process with proper metrics
+func GracefulShutdown(logger observability.Logger, metrics observability.Metrics, startTime time.Time) {
+	ctx := context.Background()
+
+	// Record shutdown initiation
+	metrics.RecordSuccess("shutdown_initiated")
+
+	logger.Info(ctx, "Shutting down gracefully", observability.Fields{
+		"uptime_seconds": time.Since(startTime).Seconds(),
+	})
+
+	// Create a timeout context for shutdown operations
+	shutdownCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	// Perform cleanup operations here
+	// For example: close database connections, flush logs, etc.
+
+	// Record final metrics
+	metrics.RecordDuration("service_uptime", time.Since(startTime).Seconds())
+	metrics.RecordSuccess("shutdown_complete")
+
+	logger.Info(shutdownCtx, "Shutdown complete", nil)
+
+	// Give time for final metrics to be sent
+	time.Sleep(2 * time.Second)
+
+	os.Exit(0)
 }
 
 // buildHandlerChain builds the middleware chain with the worker at the end.
