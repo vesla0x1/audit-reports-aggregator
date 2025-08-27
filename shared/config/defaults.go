@@ -42,6 +42,25 @@ func DefaultLambdaConfig() LambdaConfig {
 	}
 }
 
+// DefaultStorageConfig returns sensible defaults for storage configuration
+func DefaultStorageConfig() StorageConfig {
+	return StorageConfig{
+		S3: DefaultS3Config(),
+		// ...other implementations
+		EnableMetrics: true,
+		MaxRetries:    3,
+		Timeout:       30 * time.Second,
+		Provider:      "s3",
+	}
+}
+
+// DefaultS3Config returns sensible defaults for S3 configuration
+func DefaultS3Config() S3Config {
+	return S3Config{
+		Region: "us-east-2",
+	}
+}
+
 // DefaultConfig returns a complete configuration with sensible defaults
 // This is useful for testing or when you want to start with defaults and override specific parts
 func DefaultConfig() *Config {
@@ -56,5 +75,6 @@ func DefaultConfig() *Config {
 		Lambda:  DefaultLambdaConfig(),
 		Handler: DefaultHandlerConfig(),
 		Retry:   DefaultRetryConfig(),
+		Storage: DefaultStorageConfig(),
 	}
 }

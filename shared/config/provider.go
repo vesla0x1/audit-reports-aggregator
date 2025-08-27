@@ -184,6 +184,19 @@ func (p *Provider) parseConfig() (*Config, error) {
 			MaxBackoff:        getDuration("RETRY_MAX_BACKOFF", "10s"),
 			BackoffMultiplier: getFloat64("RETRY_BACKOFF_MULTIPLIER", 2.0),
 		},
+
+		// Storage
+		Storage: StorageConfig{
+			EnableMetrics: getBool("STORAGE_ENABLE_METRICS", true),
+			MaxRetries:    getInt("STORAGE_MAX_RETRIES", 3),
+			Timeout:       getDuration("STORAGE_TIMEOUT", "30s"),
+			S3: S3Config{
+				Region:          getEnv("AWS_REGION", "us-east-2"),
+				Bucket:          getEnv("S3_BUCKET", ""),
+				AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
+				SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
+			},
+		},
 	}
 
 	// Apply defaults
