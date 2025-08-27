@@ -1,0 +1,272 @@
+# ==================== Environment Files ====================
+.env
+.env.local
+.env.dev
+.env.staging
+.env.prod
+.env.*
+!.env.example
+!.env.sample
+
+# ==================== Terraform ====================
+# Terraform directories
+**/.terraform/*
+.terraform/
+.terraform.lock.hcl
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
+*.tfvars
+!*.tfvars.example
+!terraform.tfvars.example
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# CLI configuration files
+.terraformrc
+terraform.rc
+
+# Terraform workspace
+terraform.tfstate.d/
+
+# ==================== Go ====================
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bootstrap
+main
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Build directories
+dist/
+build/
+
+# ==================== Lambda / Deployment Packages ====================
+*.zip
+!placeholder.zip
+workers/*/downloader.zip
+workers/*/scraper.zip
+workers/*/processor.zip
+terraform/local/*.zip
+terraform/dev/*.zip
+terraform/prod/*.zip
+lambda/*.zip
+
+# ==================== LocalStack ====================
+# LocalStack data
+.localstack/
+localstack/
+tmp/
+volume/
+
+# ==================== Docker ====================
+# Docker volumes
+docker/volumes/
+.docker/
+
+# ==================== AWS ====================
+# AWS credentials
+.aws/
+aws/credentials
+aws/config
+
+# AWS SAM
+.aws-sam/
+samconfig.toml
+
+# ==================== IDE / Editor ====================
+# Visual Studio Code
+.vscode/
+*.code-workspace
+.history/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+.vim/
+*~
+
+# Emacs
+\#*\#
+.\#*
+*~
+.emacs.desktop
+.emacs.desktop.lock
+
+# ==================== Operating System ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+.nfs*
+
+# ==================== Logs ====================
+*.log
+logs/
+log/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ==================== Testing ====================
+# Test coverage
+coverage/
+.nyc_output/
+test-results/
+junit.xml
+
+# ==================== Build Artifacts ====================
+# General build outputs
+target/
+output/
+bin/
+obj/
+
+# ==================== Python (if you add Python scripts) ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# ==================== Node.js (if you add Node scripts) ====================
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+.pnp.*
+.yarn/
+
+# ==================== Temporary Files ====================
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+.cache/
+tmp/
+temp/
+
+# ==================== Project Specific ====================
+# Downloaded reports
+downloads/
+reports/
+*.pdf
+*.xlsx
+*.csv
+!test/*.pdf
+!test/*.xlsx
+!test/*.csv
+
+# Placeholder files
+placeholder.txt
+
+# Secrets and sensitive data
+secrets/
+*.key
+*.pem
+*.cert
+*.crt
+credentials.json
+service-account.json
+
+# ==================== Documentation ====================
+# Keep documentation
+!docs/
+!README.md
+!LICENSE
+
+# ==================== CI/CD ====================
+.github/actions/*/dist/
+.gitlab-ci-local/
+
+# ==================== Debugging ====================
+debug/
+.dlv/
+__debug_bin
+
+# ==================== Miscellaneous ====================
+*.orig
+.history/
+.vscode-test/
