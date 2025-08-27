@@ -86,6 +86,7 @@ terraform-apply:
 	@echo "placeholder" > "placeholder.txt"
 	zip -r placeholder.zip placeholder.txt && rm placeholder.txt
 	cd terraform/local && mv ../../placeholder.zip . && terraform apply -auto-approve
+	rm placeholder.zip
 
 .PHONY: terraform-destroy
 terraform-destroy:
@@ -130,24 +131,26 @@ deploy-lambda: build-lambda
 		s3://$(S3_LAMBDA_BUCKET)/downloader.zip
 	
 	@echo "Updating downloader function..."
-	AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) \
+	@AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) AWS_DEFAULT_REGION=$(AWS_REGION) \
 	aws --endpoint-url=$(LOCALSTACK_ENDPOINT) \
 		lambda update-function-code \
-		--function-name $(LAMBDA_FUNCTION_NAME) \
+		--function-name $(LAMBDA_FUNCTION_NAME_DOWNLOADER) \
 		--s3-bucket $(S3_LAMBDA_BUCKET) \
-		--s3-key downloader.zip \
-		2>/dev/null || \
-	AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) AWS_DEFAULT_REGION=$(AWS_REGION) \
-	aws --endpoint-url=$(LOCALSTACK_ENDPOINT) \
+		--s3-key downloader.zip || \
+	( \
+		echo "Update failed, trying to create function..." && \
+	    AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) AWS_DEFAULT_REGION=$(AWS_REGION) \
+	    aws --endpoint-url=$(LOCALSTACK_ENDPOINT) \
 		lambda create-function \
-		--function-name $(LAMBDA_FUNCTION_NAME) \
+		--function-name $(LAMBDA_FUNCTION_NAME_DOWNLOADER) \
 		--runtime provided.al2 \
 		--role $(LAMBDA_ROLE_ARN) \
 		--handler bootstrap \
 		--code S3Bucket=$(S3_LAMBDA_BUCKET),S3Key=downloader.zip \
 		--timeout $(LAMBDA_TIMEOUT) \
 		--memory-size $(LAMBDA_MEMORY_SIZE) \
-		--environment Variables="{ENVIRONMENT=$(ENVIRONMENT),S3_BUCKET=$(S3_BUCKET),LOG_LEVEL=$(LOG_LEVEL)}"
+		--environment Variables="{ENVIRONMENT=$(ENVIRONMENT),S3_BUCKET=$(S3_BUCKET),LOG_LEVEL=$(LOG_LEVEL)}" \
+	)
 	
 	@echo "Lambda deployment complete!"
 
