@@ -30,8 +30,40 @@ services:
     networks:
       - ${DOCKER_NETWORK:-audit-network}
 
+  postgres:
+    image: postgres:15-alpine
+    container_name: audit_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${DB_NAME:-audit_reports_aggregator}
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ${DOCKER_NETWORK:-audit-network}
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:-admin@admin.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASS:-admin}
+    networks:
+      - ${DOCKER_NETWORK:-audit-network}
+
 volumes:
   terraform_cache:
+  postgres_data:
 
 networks:
   audit-network:

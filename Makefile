@@ -10,13 +10,11 @@ help:
 	@echo "Available commands:"
 	@echo "  make local-up          - Start local infrastructure with LocalStack"
 	@echo "  make local-down        - Stop local infrastructure"
-	@echo "  make local-reset       - Reset local infrastructure (clean start)"
 	@echo "  make terraform-init    - Initialize Terraform for LocalStack"
 	@echo "  make terraform-apply   - Apply Terraform configuration to LocalStack"
 	@echo "  make terraform-destroy - Destroy Terraform resources in LocalStack"
 	@echo "  make build-lambda      - Build Lambda deployment packages"
 	@echo "  make deploy-lambda     - Deploy Lambda functions to LocalStack"
-	@echo "  make logs              - View LocalStack logs"
 	@echo "  make clean             - Clean all generated files and containers"
 
 # =====================================
@@ -55,6 +53,14 @@ endif
 
 # Terraform Configuration
 TF_DIR ?= terraform/$(ENVIRONMENT)
+
+# Database Configuration
+DB_HOST ?= localhost
+DB_PORT ?= 5432
+DB_NAME ?= audit_reports_aggregator
+DB_USER ?= postgres
+DB_PASSWORD ?= postgres
+DB_URL ?= postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
 
 # Docker Compose commands
 .PHONY: local-up
@@ -162,6 +168,52 @@ set-lambda-env:
 	--function-name $(LAMBDA_FUNCTION_NAME_DOWNLOADER) \
 	--environment Variables='{S3_BUCKET=audit-reports-local-reports}'
 
+.PHONY: db-migrate
+db-migrate:
+	@echo "Running database migrations..."
+	@docker run --rm -v $(PWD)/migrations:/migrations --network host migrate/migrate \
+		-path=/migrations/ -database "$(DB_URL)" up
+	@echo "Migrations completed!"
+
+.PHONY: db-rollback
+db-rollback:
+	@echo "Rolling back last migration..."
+	@docker run --rm -v $(PWD)/migrations:/migrations --network host migrate/migrate \
+		-path=/migrations/ -database "$(DB_URL)" down 1
+	@echo "Rollback completed!"
+
+.PHONY: db-create-migration
+db-create-migration:
+	@if [ -z "$(NAME)" ]; then \
+		echo "Usage: make db-create-migration NAME=create_users_table"; \
+		exit 1; \
+	fi
+	@TIMESTAMP=$$(date +%Y%m%d%H%M%S); \
+	touch migrations/$${TIMESTAMP}_$(NAME).up.sql; \
+	touch migrations/$${TIMESTAMP}_$(NAME).down.sql; \
+	echo "Created migration files:"; \
+	echo "  migrations/$${TIMESTAMP}_$(NAME).up.sql"; \
+	echo "  migrations/$${TIMESTAMP}_$(NAME).down.sql"
+
+.PHONY: db-dump
+db-dump:
+	@echo "Creating database backup..."
+	@mkdir -p backups
+	@docker-compose --env-file $(DOCKER_COMPOSE_ENV_FILE) -f $(DOCKER_COMPOSE_FILE) exec -T postgres \
+		pg_dump -U $(DB_USER) -d $(DB_NAME) > backups/backup_$(shell date +%Y%m%d_%H%M%S).sql
+	@echo "Backup created in backups/ directory"
+
+.PHONY: db-restore
+db-restore:
+	@if [ -z "$(FILE)" ]; then \
+		echo "Usage: make db-restore FILE=backups/backup_YYYYMMDD_HHMMSS.sql"; \
+		exit 1; \
+	fi
+	@echo "Restoring database from $(FILE)..."
+	@docker-compose --env-file $(DOCKER_COMPOSE_ENV_FILE) -f $(DOCKER_COMPOSE_FILE) exec -T postgres \
+		psql -U $(DB_USER) -d $(DB_NAME) < $(FILE)
+	@echo "Database restored!"
+
 # Clean commands
 .PHONY: clean
 clean:
@@ -175,31 +227,3 @@ clean:
 	rm -f workers/scraper/scraper.zip
 	rm -f workers/processor/processor.zip
 	@echo "Clean complete!"
-
-# Development helpers
-.PHONY: aws-local
-aws-local:
-	@echo "Configure AWS CLI for LocalStack:"
-	@echo "export AWS_ENDPOINT_URL=$(LOCALSTACK_ENDPOINT)"
-	@echo "export AWS_ACCESS_KEY_ID=test"
-	@echo "export AWS_SECRET_ACCESS_KEY=test"
-	@echo "export AWS_DEFAULT_REGION=$(AWS_REGION)"
-
-.PHONY: list-resources
-list-resources:
-	@echo "=== S3 Buckets ==="
-	@aws --endpoint-url=$(LOCALSTACK_ENDPOINT) s3 ls
-	@echo ""
-	@echo "=== SQS Queues ==="
-	@aws --endpoint-url=$(LOCALSTACK_ENDPOINT) sqs list-queues
-	@echo ""
-	@echo "=== Lambda Functions ==="
-	@aws --endpoint-url=$(LOCALSTACK_ENDPOINT) lambda list-functions --query 'Functions[].FunctionName'
-
-# Watch logs
-.PHONY: watch-logs
-watch-logs:
-	@echo "Watching Lambda logs..."
-	aws --endpoint-url=$(LOCALSTACK_ENDPOINT) logs tail \
-		/aws/lambda/$(PROJECT_NAME)-$(ENVIRONMENT)-downloader \
-		--follow
