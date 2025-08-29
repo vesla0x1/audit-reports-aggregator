@@ -130,11 +130,11 @@ variable "lambda_deployment_package" {
 
 # S3 Bucket for storing downloaded reports
 resource "aws_s3_bucket" "reports" {
-  bucket        = "${var.project_name}-${var.environment}-reports"
+  bucket        = "${var.project_name}-${var.environment}"
   force_destroy = true
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-reports"
+    Name        = "${var.project_name}-${var.environment}"
     Environment = var.environment
     Purpose     = "Store downloaded audit reports"
   }

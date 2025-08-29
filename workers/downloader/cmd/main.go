@@ -1,21 +1,15 @@
 package main
 
 import (
-	"context"
+	"downloader/internal/domain"
+	"downloader/internal/infrastructure/adapters/http"
+	"downloader/internal/usecase"
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
-	httpAdapter "downloader/internal/adapters/http"
-	"downloader/internal/service"
-	"downloader/internal/worker"
-
 	"shared/config"
-	"shared/handler"
-	"shared/handler/platforms"
-	"shared/observability"
+	"shared/domain/handler"
+	"shared/domain/storage"
+	infrahandler "shared/infrastructure/handlers"
+	infrastorage "shared/infrastructure/storage"
 )
 
 func main() {
@@ -25,128 +19,37 @@ func main() {
 	cfg := cfgProvider.MustGet()
 
 	// Initialize observability
-	obsConfig := &observability.Config{
-		ServiceName: cfg.ServiceName,
-		Environment: cfg.Environment,
-		LogLevel:    cfg.LogLevel,
-		LogOutput:   os.Stdout,
+	//obsProvider := observability.GetProvider()
+	//if err := obsProvider.Initialize(cfg, &infraobs.Factory{}); err != nil {
+	//	log.Fatalf("Failed to initialize observability: %v", err)
+	//}
+
+	storageProvider := storage.GetProvider()
+	if err := storageProvider.Initialize(cfg, &infrastorage.Factory{}); err != nil {
+		log.Fatalf("Failed to initialize storage: %v", err)
 	}
 
-	obsProvider := observability.NewProvider(obsConfig)
-	logger := obsProvider.Logger("main")
-	metrics := obsProvider.Metrics("main")
+	// Create services and use case
+	objectStorage := storageProvider.MustGetStorage()
+	httpClient := http.NewClient().WithConfig(cfg.HTTP)
+	downloadService := domain.NewDownloadService(httpClient)
 
-	// Record service startup
-	startTime := time.Now()
-	metrics.RecordSuccess("service_start")
-
-	logger.Info(context.Background(), "Starting downloader worker", observability.Fields{
-		"service":     cfg.ServiceName,
-		"environment": cfg.Environment,
-	})
-
-	// Initialize HTTP client with defaults, then override with config
-	httpClient := httpAdapter.NewClient()
-	if cfg != nil {
-		httpClient.WithConfig(cfg.HTTP)
-	}
-
-	// Initialize download service
-	downloadService := service.NewDownloadService(
-		httpClient,
-		obsProvider.Logger("download-service"),
-		obsProvider.Metrics("dowload-service"),
-	)
-
-	// Create worker
-	downloaderWorker := worker.NewDownloaderWorker(
+	useCase := usecase.NewDownloaderWorker(
 		downloadService,
-		obsProvider.Logger("worker"),
-		obsProvider.Metrics("worker"),
+		objectStorage,
+		//obsProvider.MustGetLogger(""),
+		//obsProvider.MustGetMetrics(),
 	)
 
-	// Create handler factory with defaults
-	factory := handler.NewFactory(downloaderWorker, obsProvider)
-
-	// Override with centralized config if available
-	if cfg != nil {
-		factory.WithHandlerConfig(cfg.Handler).WithRetryConfig(cfg.Retry)
+	// Initialize handler with factory
+	handlerProvider := handler.GetProvider()
+	handlerFactory := &infrahandler.Factory{}
+	if err := handlerProvider.Initialize(useCase, cfg, handlerFactory); err != nil {
+		log.Fatalf("Failed to initialize handler: %v", err)
 	}
 
-	// Detect platform
-	platform := handler.DetectPlatform()
-	logger.Info(context.Background(), "Detected platform", observability.Fields{
-		"platform":         platform,
-		"startup_duration": time.Since(startTime).Seconds(),
-	})
-
-	// Record platform type
-	metrics.RecordSuccess("platform_" + platform)
-
-	// Create handler with middleware
-	h := factory.Create()
-
-	// Setup graceful shutdown
-	shutdownChan := make(chan os.Signal, 1)
-	signal.Notify(shutdownChan, os.Interrupt, syscall.SIGTERM)
-
-	// Start platform adapter
-	switch platform {
-	case "lambda":
-		// Lambda mode
-		logger.Info(context.Background(), "Starting Lambda runtime", observability.Fields{
-			"mode":          "lambda",
-			"function_name": os.Getenv("AWS_LAMBDA_FUNCTION_NAME"),
-			"memory_size":   os.Getenv("AWS_LAMBDA_FUNCTION_MEMORY_SIZE"),
-		})
-
-		// Configure Lambda adapter
-		lambdaConfig := &platforms.LambdaConfig{
-			Timeout:                   cfg.Lambda.Timeout,
-			EnablePartialBatchFailure: cfg.Lambda.EnablePartialBatchFailure,
-		}
-
-		// Create and start Lambda adapter
-		adapter := platforms.NewLambdaAdapter(h, lambdaConfig)
-		adapter.Start() // This blocks until Lambda runtime stops
-	default:
-		// HTTP mode
-		logger.Info(context.Background(), "Starting HTTP server", observability.Fields{
-			"address": cfg.HTTP.Addr,
-			"mode":    "http",
-		})
-
-		adapter := platforms.NewHTTPAdapter(h)
-		// Start server in a goroutine
-		serverErrChan := make(chan error, 1)
-		go func() {
-			if err := adapter.Serve(cfg.HTTP.Addr); err != nil {
-				serverErrChan <- err
-			}
-		}()
-
-		// Wait for shutdown signal or server error
-		select {
-		case <-shutdownChan:
-			handler.GracefulShutdown(logger, metrics, startTime)
-		case err := <-serverErrChan:
-			metrics.RecordError("service", "server_error")
-			logger.Error(context.Background(), "Server error", err, nil)
-			log.Fatalf("Server error: %v", err)
-		}
-
-		// Graceful shutdown
-		go func() {
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-			<-sigChan
-
-			logger.Info(context.Background(), "Shutting down gracefully", nil)
-			os.Exit(0)
-		}()
-
-		if err := adapter.Serve(cfg.HTTP.Addr); err != nil {
-			log.Fatalf("Server error: %v", err)
-		}
+	// Start the application
+	if err := handlerProvider.Start(); err != nil {
+		log.Fatalf("Failed to start: %v", err)
 	}
 }

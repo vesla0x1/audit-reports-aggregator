@@ -39,9 +39,9 @@ func (p *Provider) Load() error {
 	}
 
 	// Load .env files in order of precedence
-	if err := p.loadEnvFiles(); err != nil {
-		return fmt.Errorf("failed to load env files: %w", err)
-	}
+	//if err := p.loadEnvFiles(); err != nil {
+	//	return fmt.Errorf("failed to load env files: %w", err)
+	//}
 
 	// Parse configuration from environment
 	cfg, err := p.parseConfig()
@@ -149,9 +149,10 @@ func (p *Provider) loadEnvFiles() error {
 func (p *Provider) parseConfig() (*Config, error) {
 	cfg := &Config{
 		// Core
-		Environment: getEnv("ENVIRONMENT", "development"),
-		ServiceName: getEnv("SERVICE_NAME", "downloader-worker"),
+		Environment: getEnv("ENVIRONMENT", "local"),
+		ServiceName: getEnv("PROJECT_NAME", "my-worker"),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
+		Version:     getEnv("SERVICE_VERSION", "1.0.0"),
 
 		// HTTP Client
 		HTTP: HTTPConfig{
@@ -189,13 +190,22 @@ func (p *Provider) parseConfig() (*Config, error) {
 		Storage: StorageConfig{
 			EnableMetrics: getBool("STORAGE_ENABLE_METRICS", true),
 			MaxRetries:    getInt("STORAGE_MAX_RETRIES", 3),
+			Provider:      getEnv("STORAGE_PROVIDER", "s3"),
 			Timeout:       getDuration("STORAGE_TIMEOUT", "30s"),
 			S3: S3Config{
 				Region:          getEnv("AWS_REGION", "us-east-2"),
 				Bucket:          getEnv("S3_BUCKET", ""),
-				AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
-				SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
+				AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", "test"),
+				SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", "test"),
 			},
+		},
+
+		Observability: ObservabilityConfig{
+			LogProvider:         getEnv("OBSERVABILITY_LOG_PROVIDER", "console"),
+			MetricsProvider:     getEnv("OBSERVABILITY_METRICS_PROVIDER", "noop"),
+			CloudWatchRegion:    getEnv("OBSERVABILITY_CLOUDWATCH_REGION", getEnv("AWS_REGION", "us-east-2")),
+			CloudWatchLogGroup:  getEnv("OBSERVABILITY_CLOUDWATCH_LOG_GROUP", ""),
+			CloudWatchNamespace: getEnv("OBSERVABILITY_CLOUDWATCH_NAMESPACE", ""),
 		},
 	}
 

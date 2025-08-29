@@ -12,13 +12,15 @@ type Config struct {
 	Environment string
 	ServiceName string
 	LogLevel    string
+	Version     string
 
 	// Component configurations
-	HTTP    HTTPConfig
-	Lambda  LambdaConfig
-	Handler HandlerConfig
-	Retry   RetryConfig
-	Storage StorageConfig
+	HTTP          HTTPConfig
+	Lambda        LambdaConfig
+	Handler       HandlerConfig
+	Retry         RetryConfig
+	Storage       StorageConfig
+	Observability ObservabilityConfig
 }
 
 // HTTPConfig holds HTTP client configuration
@@ -77,6 +79,17 @@ type RetryConfig struct {
 	BackoffMultiplier float64
 }
 
+// ObservabilityConfig holds observability configuration
+type ObservabilityConfig struct {
+	LogProvider     string `json:"log_provider" yaml:"log_provider"`         // cloudwatch, console, etc
+	MetricsProvider string `json:"metrics_provider" yaml:"metrics_provider"` // cloudwatch, prometheus, etc
+
+	// CloudWatch specific (used when provider is cloudwatch)
+	CloudWatchRegion    string `json:"cloudwatch_region" yaml:"cloudwatch_region"`
+	CloudWatchLogGroup  string `json:"cloudwatch_log_group" yaml:"cloudwatch_log_group"`
+	CloudWatchNamespace string `json:"cloudwatch_namespace" yaml:"cloudwatch_namespace"`
+}
+
 // Validate validates the entire configuration
 func (c *Config) Validate() error {
 	var errors []string
@@ -105,6 +118,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Storage.Validate(); err != nil {
 		errors = append(errors, fmt.Sprintf("storage config: %v", err))
+	}
+	if err := c.Observability.Validate(); err != nil {
+		errors = append(errors, fmt.Sprintf("observability config: %v", err))
 	}
 	if len(errors) > 0 {
 		return fmt.Errorf("configuration errors: %s", strings.Join(errors, "; "))
@@ -138,6 +154,20 @@ func (s *S3Config) Validate() error {
 
 	if s.Region == "" {
 		return fmt.Errorf("AWS_REGION is required")
+	}
+
+	return nil
+}
+
+func (o *ObservabilityConfig) Validate() error {
+	// Only validate if providers are set
+	if o.LogProvider == "cloudwatch" {
+		if o.CloudWatchLogGroup == "" {
+			return fmt.Errorf("cloudwatch log group is required when using cloudwatch provider")
+		}
+		if o.CloudWatchRegion == "" {
+			o.CloudWatchRegion = "us-east-2"
+		}
 	}
 
 	return nil

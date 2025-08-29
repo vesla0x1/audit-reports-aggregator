@@ -61,6 +61,16 @@ func DefaultS3Config() S3Config {
 	}
 }
 
+func DefaultObservabilityConfig() ObservabilityConfig {
+	return ObservabilityConfig{
+		LogProvider:         "console",
+		MetricsProvider:     "noop",
+		CloudWatchRegion:    "us-east-2",
+		CloudWatchLogGroup:  "",
+		CloudWatchNamespace: "",
+	}
+}
+
 // DefaultConfig returns a complete configuration with sensible defaults
 // This is useful for testing or when you want to start with defaults and override specific parts
 func DefaultConfig() *Config {
@@ -71,10 +81,11 @@ func DefaultConfig() *Config {
 		LogLevel:    "info",
 
 		// Component configurations with defaults
-		HTTP:    DefaultHTTPConfig(),
-		Lambda:  DefaultLambdaConfig(),
-		Handler: DefaultHandlerConfig(),
-		Retry:   DefaultRetryConfig(),
-		Storage: DefaultStorageConfig(),
+		HTTP:          DefaultHTTPConfig(),
+		Lambda:        DefaultLambdaConfig(),
+		Handler:       DefaultHandlerConfig(),
+		Retry:         DefaultRetryConfig(),
+		Storage:       DefaultStorageConfig(),
+		Observability: DefaultObservabilityConfig(),
 	}
 }

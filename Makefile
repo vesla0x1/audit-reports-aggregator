@@ -154,6 +154,14 @@ deploy-lambda: build-lambda
 	
 	@echo "Lambda deployment complete!"
 
+.PHONE: set-lambda-env
+set-lambda-env:
+	AWS_ACCESS_KEY_ID=$(AWS_ACCESS_KEY_ID) AWS_SECRET_ACCESS_KEY=$(AWS_SECRET_ACCESS_KEY) AWS_DEFAULT_REGION=$(AWS_REGION) \
+	aws --endpoint-url=$(LOCALSTACK_ENDPOINT) \
+	lambda update-function-configuration \
+	--function-name $(LAMBDA_FUNCTION_NAME_DOWNLOADER) \
+	--environment Variables='{S3_BUCKET=audit-reports-local-reports}'
+
 # Clean commands
 .PHONY: clean
 clean:
