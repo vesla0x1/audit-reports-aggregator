@@ -2,32 +2,33 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"time"
 
 	"downloader/internal/domain"
 	"shared/domain/handler"
+	"shared/domain/observability"
 	"shared/domain/storage"
 )
 
 type DownloaderWorker struct {
 	downloadService *domain.DownloadService
 	objectStorage   storage.ObjectStorage
-	//logger          observability.Logger
-	//metrics         observability.Metrics
+	logger          observability.Logger
+	metrics         observability.Metrics
 }
 
 func NewDownloaderWorker(
 	downloadService *domain.DownloadService,
 	objectStorage storage.ObjectStorage,
-	//logger observability.Logger,
-	//metrics observability.Metrics,
+	logger observability.Logger,
+	metrics observability.Metrics,
 ) *DownloaderWorker {
 	return &DownloaderWorker{
 		downloadService: downloadService,
 		objectStorage:   objectStorage,
-		//logger:          logger,
-		//metrics:         metrics,
+		logger:          logger,
+		metrics:         metrics,
 	}
 }
 
@@ -36,20 +37,30 @@ func (w *DownloaderWorker) Name() string {
 }
 
 func (w *DownloaderWorker) Run(ctx context.Context, request handler.Request) (handler.Response, error) {
-	/*startTime := time.Now()
-	w.logger.Info("Processing download request", map[string]interface{}{
-		"request_id":   request.ID,
-		"request_type": request.Type,
-	})*/
+	startTime := time.Now()
+
+	w.logger.Info("Processing download request",
+		"request_id", request.ID,
+		"request_type", request.Type,
+		"source", request.Source)
+
+	w.metrics.IncrementCounter("worker.requests", map[string]string{
+		"worker": w.Name(),
+		"type":   request.Type,
+	})
 
 	// Parse request
 	var downloadReq domain.DownloadRequest
 	if err := request.Unmarshal(&downloadReq); err != nil {
-		/*w.metrics.IncrementCounter("worker.errors", map[string]string{
-			"error_type": "invalid_payload",
-		})*/
+		w.logger.Error("Failed to parse download request",
+			"error", err,
+			"request_id", request.ID)
 
-		fmt.Println("ops", err)
+		w.metrics.IncrementCounter("worker.errors", map[string]string{
+			"worker":     w.Name(),
+			"error_type": "invalid_payload",
+		})
+
 		return handler.Response{
 			Success: false,
 			Error: &handler.ErrorInfo{
@@ -64,19 +75,26 @@ func (w *DownloaderWorker) Run(ctx context.Context, request handler.Request) (ha
 		downloadReq.ID = request.ID
 	}
 
+	w.logger.Info("Download request parsed",
+		"request_id", downloadReq.ID,
+		"url", downloadReq.URL,
+		"has_storage_path", downloadReq.StoragePath != "")
+
 	// Execute download
 	result, reader, err := w.downloadService.Execute(ctx, downloadReq)
 	if err != nil {
-		/*errorType := w.categorizeError(err)
+		errorType := w.categorizeError(err)
+
+		w.logger.Error("Download execution failed",
+			"error", err,
+			"request_id", request.ID,
+			"url", downloadReq.URL,
+			"error_type", errorType)
+
 		w.metrics.IncrementCounter("worker.errors", map[string]string{
+			"worker":     w.Name(),
 			"error_type": errorType,
 		})
-
-		w.logger.Error("Download failed", map[string]interface{}{
-			"request_id": request.ID,
-			"error":      err.Error(),
-			"error_type": errorType,
-		})*/
 
 		if domainErr, ok := err.(*domain.DomainError); ok {
 			return handler.Response{
@@ -103,11 +121,19 @@ func (w *DownloaderWorker) Run(ctx context.Context, request handler.Request) (ha
 	if reader != nil {
 		defer reader.Close()
 
-		_, err := w.processContent(reader)
+		storageStart := time.Now()
+		bytesProcessed, err := w.processContent(reader)
+		storageDuration := time.Since(storageStart)
 		if err != nil {
-			/*w.metrics.IncrementCounter("worker.errors", map[string]string{
-				"error_type": "content_read",
-			})*/
+			w.logger.Error("Failed to store downloaded content",
+				"error", err,
+				"request_id", request.ID,
+				"storage_path", result.StoragePath)
+
+			w.metrics.IncrementCounter("worker.errors", map[string]string{
+				"worker":     w.Name(),
+				"error_type": "storage_error",
+			})
 
 			return handler.Response{
 				Success: false,
@@ -119,24 +145,36 @@ func (w *DownloaderWorker) Run(ctx context.Context, request handler.Request) (ha
 			}, nil
 		}
 
-		/*w.metrics.RecordHistogram("worker.bytes_processed", float64(bytesRead), map[string]string{
+		w.logger.Info("Content stored successfully",
+			"request_id", request.ID,
+			"bytes", bytesProcessed,
+			"storage_duration_ms", storageDuration.Milliseconds())
+
+		w.metrics.RecordHistogram("worker.bytes_processed", float64(bytesProcessed), map[string]string{
 			"worker": w.Name(),
-		})*/
+		})
+		w.metrics.RecordHistogram("worker.storage_duration", float64(storageDuration.Milliseconds()), nil)
+
 	}
 
 	// Record success metrics
-	/*duration := time.Since(startTime).Seconds()
-	w.metrics.RecordHistogram("worker.duration", duration, map[string]string{
+	duration := time.Since(startTime)
+
+	w.logger.Info("Request processed successfully",
+		"request_id", request.ID,
+		"url", downloadReq.URL,
+		"storage_path", result.StoragePath,
+		"duration_ms", duration.Milliseconds(),
+		"file_size", result.Size,
+		"content_type", result.ContentType)
+
+	w.metrics.RecordHistogram("worker.duration", float64(duration.Milliseconds()), map[string]string{
 		"worker": w.Name(),
+		"status": "success",
 	})
 	w.metrics.IncrementCounter("worker.success", map[string]string{
 		"worker": w.Name(),
 	})
-
-	w.logger.Info("Request processed successfully", map[string]interface{}{
-		"request_id": request.ID,
-		"duration":   duration,
-	})*/
 
 	return handler.NewSuccessResponse(request.ID, result)
 }
@@ -145,4 +183,44 @@ func (w *DownloaderWorker) processContent(reader io.Reader) (int64, error) {
 	metadata := storage.ObjectMetadata{ContentType: "application/octet-stream"}
 	err := w.objectStorage.Put(context.Background(), "audit-reports-local-reports", "cantina/cantina-report.pdf", reader, metadata)
 	return 0, err
+}
+
+func (w *DownloaderWorker) categorizeError(err error) string {
+	if err == nil {
+		return "none"
+	}
+
+	if domainErr, ok := err.(*domain.DomainError); ok {
+		return domainErr.Code
+	}
+
+	errStr := err.Error()
+	switch {
+	case contains(errStr, "timeout"):
+		return "timeout"
+	case contains(errStr, "connection"):
+		return "connection_error"
+	case contains(errStr, "invalid"):
+		return "validation_error"
+	case contains(errStr, "not found"):
+		return "not_found"
+	default:
+		return "unknown"
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) &&
+		(s == substr || len(s) > 0 && s[:len(substr)] == substr ||
+			len(s) > len(substr) && s[len(s)-len(substr):] == substr ||
+			len(substr) > 0 && len(s) > len(substr) && findSubstring(s, substr))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

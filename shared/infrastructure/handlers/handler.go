@@ -5,21 +5,26 @@ import (
 
 	"shared/config"
 	"shared/domain/handler"
+	"shared/domain/observability"
 )
 
 type Handler struct {
 	useCase handler.UseCase
 	chain   handler.HandlerFunc
+	logger  observability.Logger
+	metrics observability.Metrics
 }
 
 func NewHandler(
 	useCase handler.UseCase,
 	cfg *config.Config,
-	//logger observability.Logger,
-	//metrics observability.Metrics,
+	logger observability.Logger,
+	metrics observability.Metrics,
 ) *Handler {
 	h := &Handler{
 		useCase: useCase,
+		logger:  logger,
+		metrics: metrics,
 	}
 
 	// Build middleware chain
@@ -28,7 +33,7 @@ func NewHandler(
 	}
 
 	// Apply middleware in reverse order
-	middlewares := buildMiddlewares(cfg)
+	middlewares := buildMiddlewares(cfg, logger, metrics)
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		chain = middlewares[i](chain)
 	}
@@ -39,8 +44,8 @@ func NewHandler(
 
 func buildMiddlewares(
 	cfg *config.Config,
-	//logger observability.Logger,
-	//metrics observability.Metrics,
+	logger observability.Logger,
+	metrics observability.Metrics,
 ) []handler.Middleware {
 	var middlewares []handler.Middleware
 
@@ -62,6 +67,14 @@ func buildMiddlewares(
 	}*/
 
 	return middlewares
+}
+
+func (h *Handler) Logger() observability.Logger {
+	return h.logger
+}
+
+func (h *Handler) Metrics() observability.Metrics {
+	return h.metrics
 }
 
 func (h *Handler) Handle(ctx context.Context, req handler.Request) (handler.Response, error) {

@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"shared/config"
+	"shared/domain/observability"
 )
 
 // Client implements the HTTPClient port
 type Client struct {
-	client *http.Client
-	config config.HTTPConfig
+	client  *http.Client
+	config  config.HTTPConfig
+	logger  observability.Logger
+	metrics observability.Metrics
 }
 
 // NewClient creates a new HTTP client with sensible defaults
@@ -41,6 +44,16 @@ func NewClientWithConfig(cfg config.HTTPConfig) *Client {
 func (c *Client) WithConfig(cfg config.HTTPConfig) *Client {
 	c.config = cfg
 	c.client.Timeout = cfg.Timeout
+	return c
+}
+
+func (c *Client) WithLogger(logger observability.Logger) *Client {
+	c.logger = logger
+	return c
+}
+
+func (c *Client) WithMetrics(metrics observability.Metrics) *Client {
+	c.metrics = metrics
 	return c
 }
 

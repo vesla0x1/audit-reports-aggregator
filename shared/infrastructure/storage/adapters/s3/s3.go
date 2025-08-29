@@ -16,6 +16,7 @@ import (
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"shared/config"
+	"shared/domain/observability"
 	"shared/domain/storage"
 )
 
@@ -23,10 +24,12 @@ import (
 type client struct {
 	s3Client *s3.Client
 	config   *config.S3Config
+	logger   observability.Logger
+	metrics  observability.Metrics
 }
 
 // NewClient creates a new S3 storage client
-func NewStorage(cfg *config.StorageConfig) (storage.ObjectStorage, error) {
+func New(cfg *config.StorageConfig, logger observability.Logger, metrics observability.Metrics) (storage.ObjectStorage, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid S3 configuration: %w", err)
 	}
@@ -45,25 +48,26 @@ func NewStorage(cfg *config.StorageConfig) (storage.ObjectStorage, error) {
 	c := &client{
 		s3Client: s3Client,
 		config:   &cfg.S3,
+		logger:   logger,
+		metrics:  metrics,
 	}
 
 	// Test connection by checking if the bucket exists
-	_, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	//if err := c.ensureBucketExists(ctx); err != nil {
-	//	return nil, fmt.Errorf("failed to verify bucket existence: %w", err)
-	//}
+	if err := c.ensureBucketExists(ctx); err != nil {
+		logger.Error("Failed to verify bucket existence", "error", err, "bucket", cfg.S3.Bucket)
+		return nil, fmt.Errorf("failed to verify bucket existence: %w", err)
+	}
 
+	logger.Info("S3 client initialized successfully", "bucket", cfg.S3.Bucket, "region", cfg.S3.Region)
 	return c, nil
 }
 
 // Put stores an object in S3
 func (c *client) Put(ctx context.Context, bucket, key string, reader io.Reader, metadata storage.ObjectMetadata) error {
-	//start := time.Now()
-	//defer func() {
-	//	c.metrics.RecordDuration("storage.s3.put", float64(time.Since(start).Milliseconds()))
-	//}()
+	start := time.Now()
 
 	// If bucket is not specified, use the default from config
 	if bucket == "" {
@@ -72,14 +76,15 @@ func (c *client) Put(ctx context.Context, bucket, key string, reader io.Reader, 
 
 	// Read the content into a buffer to determine size
 	buf := &bytes.Buffer{}
-	_, err := io.Copy(buf, reader)
+	bytesRead, err := io.Copy(buf, reader)
 	if err != nil {
-		//c.metrics.IncrementCounter("storage.s3.put.error", 1)
-		//c.logger.Error(ctx, "failed to read content", err, observability.Fields{
-		//	"bucket": bucket,
-		//	"key":    key,
-		//	"error":  err.Error(),
-		//})
+		c.logger.Error("Failed to read content",
+			"error", err,
+			"bucket", bucket,
+			"key", key)
+		c.metrics.IncrementCounter("s3.put.errors", map[string]string{
+			"error_type": "read_error",
+		})
 		return fmt.Errorf("failed to read content: %w", err)
 	}
 
@@ -103,32 +108,33 @@ func (c *client) Put(ctx context.Context, bucket, key string, reader io.Reader, 
 
 	_, err = c.s3Client.PutObject(ctx, input)
 	if err != nil {
-		//c.metrics.IncrementCounter(ctx, "storage.s3.put.error", 1)
-		//c.logger.Error(ctx, "failed to put object", err, observability.Fields{
-		//	"bucket": bucket,
-		//	"key":    key,
-		//	"error":  err.Error(),
-		//})
+		c.logger.Error("Failed to put object",
+			"error", err,
+			"bucket", bucket,
+			"key", key)
+		c.metrics.IncrementCounter("s3.put.errors", map[string]string{
+			"error_type": "s3_error",
+		})
 		return fmt.Errorf("failed to put object: %w", err)
 	}
 
-	//c.metrics.IncrementCounter(ctx, "storage.s3.put.success", 1)
-	//c.metrics.RecordValue("storage.s3.put.bytes", float64(buf.Len()))
-	//c.logger.Debug(ctx, "object stored successfully", observability.Fields{
-	//	"bucket": bucket,
-	//	"key":    key,
-	//	"size":   buf.Len(),
-	//})
+	duration := time.Since(start)
+	c.logger.Info("Object stored successfully",
+		"bucket", bucket,
+		"key", key,
+		"size_bytes", bytesRead,
+		"duration_ms", duration.Milliseconds())
+
+	c.metrics.IncrementCounter("s3.put.success", nil)
+	c.metrics.RecordHistogram("s3.put.duration", float64(duration.Milliseconds()), nil)
+	c.metrics.RecordHistogram("s3.put.size", float64(bytesRead), nil)
 
 	return nil
 }
 
 // Get retrieves an object from S3
 func (c *client) Get(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
-	//start := time.Now()
-	//defer func() {
-	//	c.metrics.RecordDuration(ctx, "storage.s3.get", float64(time.Since(start).Milliseconds()))
-	//}()
+	start := time.Now()
 
 	if bucket == "" {
 		bucket = c.config.Bucket
@@ -141,37 +147,37 @@ func (c *client) Get(ctx context.Context, bucket, key string) (io.ReadCloser, er
 
 	result, err := c.s3Client.GetObject(ctx, input)
 	if err != nil {
-		//c.metrics.IncrementCounter(ctx, "storage.s3.get.error", 1)
 		if isNotFoundError(err) {
-			//c.logger.Debug(ctx, "object not found", observability.Fields{
-			//	"bucket": bucket,
-			//	"key":    key,
-			//})
+			c.logger.Info("Object not found",
+				"bucket", bucket,
+				"key", key)
+			c.metrics.IncrementCounter("s3.get.not_found", nil)
 			return nil, storage.ErrObjectNotFound
 		}
-		//c.logger.Error(ctx, "failed to get object", err, observability.Fields{
-		//	"bucket": bucket,
-		//	"key":    key,
-		//	"error":  err.Error(),
-		//})
+
+		c.logger.Error("Failed to get object",
+			"error", err,
+			"bucket", bucket,
+			"key", key)
+		c.metrics.IncrementCounter("s3.get.errors", nil)
 		return nil, fmt.Errorf("failed to get object: %w", err)
 	}
 
-	//c.metrics.IncrementCounter(ctx, "storage.s3.get.success", 1)
-	//c.logger.Debug(ctx, "object retrieved successfully", observability.Fields{
-	//	"bucket": bucket,
-	//	"key":    key,
-	//})
+	duration := time.Since(start)
+	c.logger.Info("Object retrieved successfully",
+		"bucket", bucket,
+		"key", key,
+		"duration_ms", duration.Milliseconds())
+
+	c.metrics.IncrementCounter("s3.get.success", nil)
+	c.metrics.RecordHistogram("s3.get.duration", float64(duration.Milliseconds()), nil)
 
 	return result.Body, nil
 }
 
 // GetWithMetadata retrieves an object along with its metadata
 func (c *client) GetWithMetadata(ctx context.Context, bucket, key string) (io.ReadCloser, *storage.ObjectMetadata, error) {
-	//start := time.Now()
-	//defer func() {
-	//	c.metrics.RecordDuration(ctx, "storage.s3.get_with_metadata", float64(time.Since(start).Milliseconds()))
-	//}()
+	start := time.Now()
 
 	if bucket == "" {
 		bucket = c.config.Bucket
@@ -184,10 +190,16 @@ func (c *client) GetWithMetadata(ctx context.Context, bucket, key string) (io.Re
 
 	result, err := c.s3Client.GetObject(ctx, input)
 	if err != nil {
-		//c.metrics.IncrementCounter(ctx, "storage.s3.get_with_metadata.error", 1)
-		//if isNotFoundError(err) {
-		//	return nil, nil, types.ErrObjectNotFound
-		//}
+		if isNotFoundError(err) {
+			c.metrics.IncrementCounter("s3.get_with_metadata.not_found", nil)
+			return nil, nil, storage.ErrObjectNotFound
+		}
+
+		c.logger.Error("Failed to get object with metadata",
+			"error", err,
+			"bucket", bucket,
+			"key", key)
+		c.metrics.IncrementCounter("s3.get_with_metadata.errors", nil)
 		return nil, nil, fmt.Errorf("failed to get object: %w", err)
 	}
 
@@ -201,16 +213,16 @@ func (c *client) GetWithMetadata(ctx context.Context, bucket, key string) (io.Re
 		UserMetadata:    result.Metadata,
 	}
 
-	//c.metrics.IncrementCounter(ctx, "storage.s3.get_with_metadata.success", 1)
+	duration := time.Since(start)
+	c.metrics.IncrementCounter("s3.get_with_metadata.success", nil)
+	c.metrics.RecordHistogram("s3.get_with_metadata.duration", float64(duration.Milliseconds()), nil)
+
 	return result.Body, metadata, nil
 }
 
 // Delete removes an object from S3
 func (c *client) Delete(ctx context.Context, bucket, key string) error {
-	//start := time.Now()
-	//defer func() {
-	//	c.metrics.RecordDuration(ctx, "storage.s3.delete", float64(time.Since(start).Milliseconds()))
-	//}()
+	start := time.Now()
 
 	if bucket == "" {
 		bucket = c.config.Bucket
@@ -223,30 +235,29 @@ func (c *client) Delete(ctx context.Context, bucket, key string) error {
 
 	_, err := c.s3Client.DeleteObject(ctx, input)
 	if err != nil {
-		//c.metrics.IncrementCounter(ctx, "storage.s3.delete.error", 1)
-		//c.logger.Error(ctx, "failed to delete object", err, observability.Fields{
-		//	"bucket": bucket,
-		//	"key":    key,
-		//	"error":  err.Error(),
-		//})
+		c.logger.Error("Failed to delete object",
+			"error", err,
+			"bucket", bucket,
+			"key", key)
+		c.metrics.IncrementCounter("s3.delete.errors", nil)
 		return fmt.Errorf("failed to delete object: %w", err)
 	}
 
-	//c.metrics.IncrementCounter(ctx, "storage.s3.delete.success", 1)
-	//c.logger.Debug(ctx, "object deleted successfully", observability.Fields{
-	//	"bucket": bucket,
-	//	"key":    key,
-	//})
+	duration := time.Since(start)
+	c.logger.Info("Object deleted successfully",
+		"bucket", bucket,
+		"key", key,
+		"duration_ms", duration.Milliseconds())
+
+	c.metrics.IncrementCounter("s3.delete.success", nil)
+	c.metrics.RecordHistogram("s3.delete.duration", float64(duration.Milliseconds()), nil)
 
 	return nil
 }
 
 // Exists checks if an object exists in S3
 func (c *client) Exists(ctx context.Context, bucket, key string) (bool, error) {
-	//start := time.Now()
-	//defer func() {
-	//	c.metrics.RecordDuration(ctx, "storage.s3.exists", float64(time.Since(start).Milliseconds()))
-	//}()
+	start := time.Now()
 
 	if bucket == "" {
 		bucket = c.config.Bucket
@@ -260,22 +271,25 @@ func (c *client) Exists(ctx context.Context, bucket, key string) (bool, error) {
 	_, err := c.s3Client.HeadObject(ctx, input)
 	if err != nil {
 		if isNotFoundError(err) {
+			c.metrics.IncrementCounter("s3.exists.not_found", nil)
 			return false, nil
 		}
-		//c.metrics.IncrementCounter(ctx, "storage.s3.exists.error", 1)
+		c.logger.Error("Failed to check object existence",
+			"error", err,
+			"bucket", bucket,
+			"key", key)
+		c.metrics.IncrementCounter("s3.exists.errors", nil)
 		return false, fmt.Errorf("failed to check object existence: %w", err)
 	}
 
-	//c.metrics.IncrementCounter(ctx, "storage.s3.exists.success", 1)
+	c.metrics.IncrementCounter("s3.exists.found", nil)
+	c.metrics.RecordHistogram("s3.exists.duration", float64(time.Since(start).Milliseconds()), nil)
 	return true, nil
 }
 
 // List returns a list of objects in S3
 func (c *client) List(ctx context.Context, bucket, prefix string) ([]storage.ObjectInfo, error) {
-	//start := time.Now()
-	//defer func() {
-	//	c.metrics.RecordDuration(ctx, "storage.s3.list", float64(time.Since(start).Milliseconds()))
-	//}()
+	start := time.Now()
 
 	if bucket == "" {
 		bucket = c.config.Bucket
@@ -291,15 +305,16 @@ func (c *client) List(ctx context.Context, bucket, prefix string) ([]storage.Obj
 	var objects []storage.ObjectInfo
 	paginator := s3.NewListObjectsV2Paginator(c.s3Client, input)
 
+	pageCount := 0
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(ctx)
 		if err != nil {
-			//c.metrics.IncrementCounter(ctx, "storage.s3.list.error", 1)
-			//c.logger.Error(ctx, "failed to list objects", err, observability.Fields{
-			//	"bucket": bucket,
-			//	"prefix": prefix,
-			//	"error":  err.Error(),
-			//})
+			c.logger.Error("Failed to list objects",
+				"error", err,
+				"bucket", bucket,
+				"prefix", prefix,
+				"pages_processed", pageCount)
+			c.metrics.IncrementCounter("s3.list.errors", nil)
 			return nil, fmt.Errorf("failed to list objects: %w", err)
 		}
 
@@ -311,25 +326,27 @@ func (c *client) List(ctx context.Context, bucket, prefix string) ([]storage.Obj
 				ETag:         aws.ToString(obj.ETag),
 			})
 		}
+		pageCount++
 	}
 
-	//c.metrics.IncrementCounter(ctx, "storage.s3.list.success", 1)
-	//c.metrics.RecordValue(ctx, "storage.s3.list.count", float64(len(objects)))
-	//c.logger.Debug(ctx, "objects listed successfully", observability.Fields{
-	//	"bucket": bucket,
-	//	"prefix": prefix,
-	//	"count":  len(objects),
-	//})
+	duration := time.Since(start)
+	c.logger.Info("Objects listed successfully",
+		"bucket", bucket,
+		"prefix", prefix,
+		"count", len(objects),
+		"pages", pageCount,
+		"duration_ms", duration.Milliseconds())
+
+	c.metrics.IncrementCounter("s3.list.success", nil)
+	c.metrics.RecordHistogram("s3.list.duration", float64(duration.Milliseconds()), nil)
+	c.metrics.RecordHistogram("s3.list.count", float64(len(objects)), nil)
 
 	return objects, nil
 }
 
 // CreateBucket creates a new S3 bucket
 func (c *client) CreateBucket(ctx context.Context, bucket string) error {
-	//start := time.Now()
-	//defer func() {
-	//	c.metrics.RecordDuration(ctx, "storage.s3.create_bucket", float64(time.Since(start).Milliseconds()))
-	//}()
+	start := time.Now()
 
 	input := &s3.CreateBucketInput{
 		Bucket: aws.String(bucket),
@@ -348,34 +365,32 @@ func (c *client) CreateBucket(ctx context.Context, bucket string) error {
 		var bae *s3types.BucketAlreadyExists
 		var baoyb *s3types.BucketAlreadyOwnedByYou
 		if errors.As(err, &bae) || errors.As(err, &baoyb) {
-			//c.logger.Debug(ctx, "bucket already exists", observability.Fields{
-			//	"bucket": bucket,
-			//})
+			c.logger.Info("Bucket already exists", "bucket", bucket)
+			c.metrics.IncrementCounter("s3.create_bucket.already_exists", nil)
 			return nil
 		}
 
-		//c.metrics.IncrementCounter(ctx, "storage.s3.create_bucket.error", 1)
-		//c.logger.Error(ctx, "failed to create bucket", err, observability.Fields{
-		//	"bucket": bucket,
-		//	"error":  err.Error(),
-		//})
+		c.logger.Error("Failed to create bucket",
+			"error", err,
+			"bucket", bucket)
+		c.metrics.IncrementCounter("s3.create_bucket.errors", nil)
 		return fmt.Errorf("failed to create bucket: %w", err)
 	}
 
-	//c.metrics.IncrementCounter(ctx, "storage.s3.create_bucket.success", 1)
-	//c.logger.Info(ctx, "bucket created successfully", observability.Fields{
-	//	"bucket": bucket,
-	//})
+	duration := time.Since(start)
+	c.logger.Info("Bucket created successfully",
+		"bucket", bucket,
+		"duration_ms", duration.Milliseconds())
+
+	c.metrics.IncrementCounter("s3.create_bucket.success", nil)
+	c.metrics.RecordHistogram("s3.create_bucket.duration", float64(duration.Milliseconds()), nil)
 
 	return nil
 }
 
 // DeleteBucket removes an S3 bucket
 func (c *client) DeleteBucket(ctx context.Context, bucket string) error {
-	//start := time.Now()
-	//defer func() {
-	//	c.metrics.RecordDuration(ctx, "storage.s3.delete_bucket", float64(time.Since(start).Milliseconds()))
-	//}()
+	start := time.Now()
 
 	input := &s3.DeleteBucketInput{
 		Bucket: aws.String(bucket),
@@ -383,18 +398,20 @@ func (c *client) DeleteBucket(ctx context.Context, bucket string) error {
 
 	_, err := c.s3Client.DeleteBucket(ctx, input)
 	if err != nil {
-		//c.metrics.IncrementCounter(ctx, "storage.s3.delete_bucket.error", 1)
-		//c.logger.Error(ctx, "failed to delete bucket", err, observability.Fields{
-		//	"bucket": bucket,
-		//	"error":  err.Error(),
-		//})
+		c.logger.Error("Failed to delete bucket",
+			"error", err,
+			"bucket", bucket)
+		c.metrics.IncrementCounter("s3.delete_bucket.errors", nil)
 		return fmt.Errorf("failed to delete bucket: %w", err)
 	}
 
-	//c.metrics.IncrementCounter(ctx, "storage.s3.delete_bucket.success", 1)
-	//c.logger.Info(ctx, "bucket deleted successfully", observability.Fields{
-	//	"bucket": bucket,
-	//})
+	duration := time.Since(start)
+	c.logger.Info("Bucket deleted successfully",
+		"bucket", bucket,
+		"duration_ms", duration.Milliseconds())
+
+	c.metrics.IncrementCounter("s3.delete_bucket.success", nil)
+	c.metrics.RecordHistogram("s3.delete_bucket.duration", float64(duration.Milliseconds()), nil)
 
 	return nil
 }
@@ -408,15 +425,14 @@ func (c *client) ensureBucketExists(ctx context.Context) error {
 	if err != nil {
 		var nse *s3types.NotFound
 		if errors.As(err, &nse) {
-			// Bucket doesn't exist, try to create it
-			//c.logger.Info(ctx, "bucket does not exist, attempting to create", observability.Fields{
-			//	"bucket": c.config.Bucket,
-			//})
+			c.logger.Info("Bucket does not exist, attempting to create",
+				"bucket", c.config.Bucket)
 			return c.CreateBucket(ctx, c.config.Bucket)
 		}
 		return fmt.Errorf("failed to check bucket existence: %w", err)
 	}
 
+	c.logger.Info("Bucket exists", "bucket", c.config.Bucket)
 	return nil
 }
 
@@ -447,8 +463,6 @@ func buildAWSConfig(storageConfig *config.StorageConfig) (aws.Config, error) {
 	optFns = append(optFns, awsconfig.WithHTTPClient(&http.Client{
 		Timeout: storageConfig.Timeout,
 	}))
-
-	//optFns = append(optFns, awsconfig.WithBaseEndpoint("http://localhost:4566"))
 
 	return awsconfig.LoadDefaultConfig(context.Background(), optFns...)
 }

@@ -3,11 +3,14 @@ package handler
 import (
 	"context"
 	"shared/config"
+	"shared/domain/observability"
 )
 
 // Handler processes requests through middleware chains
 type Handler interface {
 	Handle(ctx context.Context, req Request) (Response, error)
+	Logger() observability.Logger
+	Metrics() observability.Metrics
 }
 
 // UseCase defines business logic interface (renamed from Worker)

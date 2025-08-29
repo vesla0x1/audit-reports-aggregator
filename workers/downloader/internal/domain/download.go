@@ -229,27 +229,6 @@ func (s *DownloadService) extractFileType(contentType, urlPath string) string {
 	return "unknown"
 }
 
-// categorizeError categorizes errors for metrics
-func (s *DownloadService) categorizeError(err error) string {
-	errStr := err.Error()
-	switch {
-	case strings.Contains(errStr, "timeout"):
-		return "timeout"
-	case strings.Contains(errStr, "connection"):
-		return "connection"
-	case strings.Contains(errStr, "404") || strings.Contains(errStr, "not found"):
-		return "not_found"
-	case strings.Contains(errStr, "403") || strings.Contains(errStr, "forbidden"):
-		return "forbidden"
-	case strings.Contains(errStr, "401") || strings.Contains(errStr, "unauthorized"):
-		return "unauthorized"
-	case strings.Contains(errStr, "500") || strings.Contains(errStr, "server"):
-		return "server_error"
-	default:
-		return "unknown"
-	}
-}
-
 // checksumReader wraps a reader to calculate checksum on read
 type ChecksumReader struct {
 	reader   io.Reader

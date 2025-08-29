@@ -3,28 +3,17 @@ package infrahandler
 import (
 	"shared/config"
 	"shared/domain/handler"
+	"shared/domain/observability"
 	"shared/infrastructure/handlers/adapters/lambda"
 )
 
-type Factory struct{}
+type Factory struct {
+	Logger  observability.Logger
+	Metrics observability.Metrics
+}
 
 func (f *Factory) CreateHandler(useCase handler.UseCase, cfg *config.Config) (handler.Handler, error) {
-	/*obsProvider := observability.GetProvider()
-	logger, err := obsProvider.GetLogger()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get logger: %w", err)
-	}
-
-	metrics, err := obsProvider.GetMetrics()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get metrics: %w", err)
-	}
-
-	componentLogger := logger.WithFields(map[string]interface{}{
-		"component": "handler",
-	})*/
-
-	return NewHandler(useCase, cfg), nil
+	return NewHandler(useCase, cfg, f.Logger, f.Metrics), nil
 }
 
 func (f *Factory) CreateAdapter(h handler.Handler, cfg *config.Config) (handler.Adapter, error) {
