@@ -15,10 +15,11 @@ import (
 
 // Metrics implements observability.Metrics using AWS CloudWatch Metrics
 type Metrics struct {
-	client    *cloudwatch.Client
-	namespace string
-	buffer    []types.MetricDatum
-	bufferCh  chan types.MetricDatum
+	client      *cloudwatch.Client
+	namespace   string
+	buffer      []types.MetricDatum
+	bufferCh    chan types.MetricDatum
+	defaultTags map[string]string
 }
 
 // NewMetrics creates a new CloudWatch metrics client
@@ -50,10 +51,11 @@ func NewMetrics(cfg config.Config) (observability.Metrics, error) {
 	client := cloudwatch.NewFromConfig(awsCfg)
 
 	m := &Metrics{
-		client:    client,
-		namespace: namespace,
-		buffer:    make([]types.MetricDatum, 0, 20),
-		bufferCh:  make(chan types.MetricDatum, 100),
+		client:      client,
+		namespace:   namespace,
+		buffer:      make([]types.MetricDatum, 0, 20),
+		bufferCh:    make(chan types.MetricDatum, 100),
+		defaultTags: make(map[string]string),
 	}
 
 	// Start background flusher
@@ -62,14 +64,45 @@ func NewMetrics(cfg config.Config) (observability.Metrics, error) {
 	return m, nil
 }
 
+// WithTags returns a new Metrics instance with additional default tags
+func (m *Metrics) WithTags(tags map[string]string) observability.Metrics {
+	// Create new default tags map
+	newDefaultTags := make(map[string]string, len(m.defaultTags)+len(tags))
+
+	// Copy existing default tags
+	for k, v := range m.defaultTags {
+		newDefaultTags[k] = v
+	}
+
+	// Add new tags (will override if keys exist)
+	for k, v := range tags {
+		newDefaultTags[k] = v
+	}
+
+	// Return new instance sharing the same client and buffer channel
+	return &Metrics{
+		client:      m.client,
+		namespace:   m.namespace,
+		buffer:      m.buffer,
+		bufferCh:    m.bufferCh,
+		defaultTags: newDefaultTags,
+	}
+}
+
 // IncrementCounter increments a counter metric
 func (m *Metrics) IncrementCounter(name string, tags map[string]string) {
+	// Merge default tags with provided tags
+	mergedTags := m.mergeTags(tags)
+
+	// Build metric name with component prefix if present
+	metricName := m.buildMetricName(name, mergedTags)
+
 	datum := types.MetricDatum{
-		MetricName: aws.String(name),
+		MetricName: aws.String(metricName),
 		Value:      aws.Float64(1),
 		Unit:       types.StandardUnitCount,
 		Timestamp:  aws.Time(time.Now()),
-		Dimensions: m.tagsToDimensions(tags),
+		Dimensions: m.tagsToDimensions(mergedTags),
 	}
 
 	select {
@@ -81,12 +114,18 @@ func (m *Metrics) IncrementCounter(name string, tags map[string]string) {
 
 // RecordHistogram records a value in a histogram
 func (m *Metrics) RecordHistogram(name string, value float64, tags map[string]string) {
+	// Merge default tags with provided tags
+	mergedTags := m.mergeTags(tags)
+
+	// Build metric name with component prefix if present
+	metricName := m.buildMetricName(name, mergedTags)
+
 	datum := types.MetricDatum{
-		MetricName: aws.String(name),
+		MetricName: aws.String(metricName),
 		Value:      aws.Float64(value),
 		Unit:       types.StandardUnitNone,
 		Timestamp:  aws.Time(time.Now()),
-		Dimensions: m.tagsToDimensions(tags),
+		Dimensions: m.tagsToDimensions(mergedTags),
 	}
 
 	select {
@@ -98,12 +137,15 @@ func (m *Metrics) RecordHistogram(name string, value float64, tags map[string]st
 
 // RecordGauge records a gauge value
 func (m *Metrics) RecordGauge(name string, value float64, tags map[string]string) {
+	mergedTags := m.mergeTags(tags)
+	metricName := m.buildMetricName(name, mergedTags)
+
 	datum := types.MetricDatum{
-		MetricName: aws.String(name),
+		MetricName: aws.String(metricName),
 		Value:      aws.Float64(value),
 		Unit:       types.StandardUnitNone,
 		Timestamp:  aws.Time(time.Now()),
-		Dimensions: m.tagsToDimensions(tags),
+		Dimensions: m.tagsToDimensions(mergedTags),
 	}
 
 	select {
@@ -111,6 +153,38 @@ func (m *Metrics) RecordGauge(name string, value float64, tags map[string]string
 	default:
 		// Buffer full, drop metric
 	}
+}
+
+// mergeTags merges default tags with provided tags
+func (m *Metrics) mergeTags(tags map[string]string) map[string]string {
+	// If no default tags and no provided tags, return empty map
+	if len(m.defaultTags) == 0 && len(tags) == 0 {
+		return make(map[string]string)
+	}
+
+	// Create merged map
+	merged := make(map[string]string, len(m.defaultTags)+len(tags))
+
+	// Copy default tags
+	for k, v := range m.defaultTags {
+		merged[k] = v
+	}
+
+	// Override/add provided tags
+	for k, v := range tags {
+		merged[k] = v
+	}
+
+	return merged
+}
+
+// buildMetricName builds the metric name with optional component prefix
+func (m *Metrics) buildMetricName(name string, tags map[string]string) string {
+	// If component tag exists, prefix the metric name with it
+	if component, ok := tags["component"]; ok && component != "" {
+		return fmt.Sprintf("%s.%s", component, name)
+	}
+	return name
 }
 
 // tagsToDimensions converts tags to CloudWatch dimensions

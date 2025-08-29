@@ -33,6 +33,10 @@ type Metrics interface {
 	// RecordGauge records a point-in-time measurement.
 	// Use sparingly in serverless; containers are ephemeral.
 	RecordGauge(name string, value float64, tags map[string]string)
+
+	// WithTags returns a new Metrics instance with additional default tags
+	// This includes namespace, component, and any other dimensions
+	WithTags(tags map[string]string) Metrics
 }
 
 // Factory interface - defined in domain
@@ -42,11 +46,11 @@ type ObservabilityFactory interface {
 
 // Provider interface for those who need it
 type ObservabilityProvider interface {
-	GetLogger() (Logger, error)
-	GetMetrics() (Metrics, error)
-	GetObservability() (Logger, Metrics, error)
-	//Close() error NOT IMPLEMENTED
-	MustGetLogger() Logger
-	MustGetMetrics() Metrics
+	GetLogger(string) (Logger, error)
+	GetMetrics(string) (Metrics, error)
+	GetObservability(string) (Logger, Metrics, error)
+	MustGetObservability(string) (Logger, Metrics, error)
+	MustGetLogger(string) Logger
+	MustGetMetrics(string) Metrics
 	IsInitialized() bool
 }

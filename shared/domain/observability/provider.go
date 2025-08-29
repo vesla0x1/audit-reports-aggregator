@@ -57,34 +57,39 @@ func (p *Provider) Initialize(cfg *config.Config, factory ObservabilityFactory) 
 	return nil
 }
 
-func (p *Provider) GetObservability() (Logger, Metrics, error) {
+func (p *Provider) GetObservability(component string) (Logger, Metrics, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if !p.initialized {
 		return nil, nil, errors.New("observability provider not initialized")
 	}
-	return p.logger, p.metrics, nil
+
+	logger := p.getScopedLogger(component)
+	metrics := p.getScopedMetrics(component)
+
+	return logger, metrics, nil
 }
 
-func (p *Provider) GetLogger() (Logger, error) {
+func (p *Provider) GetLogger(component string) (Logger, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if !p.initialized {
 		return nil, errors.New("observability provider not initialized")
 	}
-	return p.logger, nil
+
+	return p.getScopedLogger(component), nil
 }
 
-func (p *Provider) GetMetrics() (Metrics, error) {
+func (p *Provider) GetMetrics(component string) (Metrics, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
 	if !p.initialized {
 		return nil, errors.New("observability provider not initialized")
 	}
-	return p.metrics, nil
+	return p.getScopedMetrics(component), nil
 }
 
 // MustGetLogger returns logger with component field
@@ -100,19 +105,52 @@ func (p *Provider) MustGetLogger(component string) Logger {
 }
 
 // MustGetMetrics returns metrics instance
-func (p *Provider) MustGetMetrics() Metrics {
+func (p *Provider) MustGetMetrics(component string) Metrics {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if !p.initialized {
-		panic("observability not initialized")
+	metrics, err := p.GetMetrics(component)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get metrics: %v", err))
 	}
+	return metrics
+}
 
-	return p.metrics
+// MustGetObservability returns both logger and metrics for a component, panics if not initialized
+func (p *Provider) MustGetObservability(component string) (Logger, Metrics) {
+	logger, metrics, err := p.GetObservability(component)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get observability: %v", err))
+	}
+	return logger, metrics
 }
 
 func (p *Provider) IsInitialized() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.initialized
+}
+
+// getScopedLogger creates a logger with component and service metadata
+// This is an internal helper to avoid code duplication
+func (p *Provider) getScopedLogger(component string) Logger {
+	// Add standard fields including component
+	return p.logger.WithFields(map[string]interface{}{
+		"service":   p.config.ServiceName,
+		"version":   p.config.Version,
+		"env":       p.config.Environment,
+		"component": component,
+	})
+}
+
+// getScopedMetrics creates metrics with component namespace and tags
+func (p *Provider) getScopedMetrics(component string) Metrics {
+	// Use the Metrics interface's methods for scoping
+	// The implementation is in the infrastructure layer
+	return p.metrics.WithTags(map[string]string{
+		"service":   p.config.ServiceName,
+		"version":   p.config.Version,
+		"env":       p.config.Environment,
+		"component": component,
+	})
 }
