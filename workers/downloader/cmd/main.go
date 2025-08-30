@@ -15,72 +15,154 @@ import (
 )
 
 func main() {
-	// Load centralized configuration
+	cfg := loadConfiguration()
+
+	deps := initializeDependencies(cfg)
+
+	app := buildApplication(cfg, deps)
+
+	startApplication(app)
+}
+
+// Dependencies holds all initialized infrastructure components
+type Dependencies struct {
+	storage    storage.ObjectStorage
+	httpClient *http.Client
+	logger     observability.Logger
+	metrics    observability.Metrics
+}
+
+// Application holds the complete application stack
+type Application struct {
+	handler handler.Handler
+	logger  observability.Logger
+	metrics observability.Metrics
+}
+
+// loadConfiguration loads and validates the application configuration
+func loadConfiguration() *config.Config {
 	cfgProvider := config.GetProvider()
 	cfgProvider.MustLoad()
-	cfg := cfgProvider.MustGet()
+	return cfgProvider.MustGet()
+}
 
-	// Initialize observability
+// initializeDependencies sets up all infrastructure dependencies
+func initializeDependencies(cfg *config.Config) *Dependencies {
+	initializeObservability(cfg)
+
+	logStartup(cfg)
+
+	storageClient := initializeStorage(cfg)
+	httpClient := createHTTPClient(cfg)
+
+	logger, metrics := observability.MustGetObservability("app")
+
+	return &Dependencies{
+		storage:    storageClient,
+		httpClient: httpClient,
+		logger:     logger,
+		metrics:    metrics,
+	}
+}
+
+// initializeObservability sets up logging and metrics infrastructure
+func initializeObservability(cfg *config.Config) {
 	if err := observability.Initialize(cfg, &infraobs.Factory{}); err != nil {
 		log.Fatalf("Failed to initialize observability: %v", err)
 	}
+}
 
-	// Get observability for main component
-	mainLogger, mainMetrics := observability.MustGetObservability("main")
-	mainLogger.Info("Starting application",
+// logStartup logs application startup information
+func logStartup(cfg *config.Config) {
+	logger, metrics := observability.MustGetObservability("main")
+
+	logger.Info("Starting application",
 		"service", cfg.ServiceName,
 		"version", cfg.Version,
 		"environment", cfg.Environment)
-	mainMetrics.IncrementCounter("application.starts", nil)
 
-	// Initialize storage with its own observability
-	storageLogger, storageMetrics := observability.MustGetObservability("storage.s3")
-	storageFactory := infrastorage.NewFactoryWithObservability(
-		storageLogger,
-		storageMetrics,
-	)
-	if err := storage.Initialize(cfg, storageFactory); err != nil {
-		storageLogger.Error("Failed to initialize storage", "error", err)
-		storageMetrics.IncrementCounter("init.failures", nil)
+	metrics.IncrementCounter("application.starts", nil)
+}
+
+// initializeStorage sets up the storage provider with observability
+func initializeStorage(cfg *config.Config) storage.ObjectStorage {
+	logger, metrics := observability.MustGetObservability("storage.s3")
+	logger.Info("calling storage creation")
+
+	factory := infrastorage.NewFactoryWithObservability(logger, metrics)
+
+	if err := storage.Initialize(cfg, factory); err != nil {
+		logger.Error("Failed to initialize storage", "error", err)
+		metrics.IncrementCounter("init.failures", nil)
 		log.Fatalf("Failed to initialize storage: %v", err)
 	}
-	storageLogger.Info("Storage initialized successfully")
-	storageMetrics.IncrementCounter("init.success", nil)
 
-	// Create services and use case
-	objectStorage := storage.MustGetStorage()
+	logger.Info("Storage initialized successfully")
+	metrics.IncrementCounter("init.success", nil)
 
-	// Create HTTP client with its observability
-	httpLogger, httpMetrics := observability.MustGetObservability("client.http")
-	httpClient := http.NewClientWithConfig(cfg.HTTP).
-		WithLogger(httpLogger).
-		WithMetrics(httpMetrics)
+	return storage.MustGetStorage()
+}
 
-	// service layer should be pure business logic - no need to use logs and metrics
-	downloadService := domain.NewDownloadService(httpClient)
+// createHTTPClient creates an HTTP client with observability
+func createHTTPClient(cfg *config.Config) *http.Client {
+	logger, metrics := observability.MustGetObservability("client.http")
 
-	useCaseLogger, useCaseMetrics := observability.MustGetObservability("usecase.download")
-	useCase := usecase.NewDownloaderWorker(
+	return http.NewClientWithConfig(cfg.HTTP).
+		WithLogger(logger).
+		WithMetrics(metrics)
+}
+
+// buildApplication assembles the application layers
+func buildApplication(cfg *config.Config, deps *Dependencies) *Application {
+	useCase := createUseCase(deps)
+
+	initializeHandler(useCase, cfg)
+
+	logger, metrics := observability.MustGetObservability("handler.download")
+
+	return &Application{
+		handler: handler.MustGetHandler(),
+		logger:  logger,
+		metrics: metrics,
+	}
+}
+
+// createUseCase builds the business logic layer
+func createUseCase(deps *Dependencies) handler.UseCase {
+	downloadService := domain.NewDownloadService(deps.httpClient)
+
+	logger, metrics := observability.MustGetObservability("usecase.download")
+
+	return usecase.NewDownloaderWorker(
 		downloadService,
-		objectStorage,
-		useCaseLogger,
-		useCaseMetrics,
+		deps.storage,
+		logger,
+		metrics,
 	)
+}
 
-	// Initialize handler with factory and observability
-	handlerLogger, handlerMetrics := observability.MustGetObservability("handler.download")
-	if err := handler.Initialize(useCase, cfg, &infrahandler.Factory{}); err != nil {
-		handlerLogger.Error("Failed to initialize handler", "error", err)
-		handlerMetrics.IncrementCounter("init.failures", nil)
+// initializeHandler sets up the request handler
+func initializeHandler(useCase handler.UseCase, cfg *config.Config) {
+	logger, metrics := observability.MustGetObservability("handler.download")
+
+	if err := handler.Initialize(useCase, cfg, &infrahandler.Factory{
+		Logger:  logger,
+		Metrics: metrics,
+	}); err != nil {
+		logger.Error("Failed to initialize handler", "error", err)
+		metrics.IncrementCounter("init.failures", nil)
 		log.Fatalf("Failed to initialize handler: %v", err)
 	}
+}
 
-	// Start the application
-	handlerLogger.Info("Starting handler")
-	handlerMetrics.IncrementCounter("handler.starts", nil)
+// startApplication starts the application and begins processing
+func startApplication(app *Application) {
+	app.logger.Info("Starting handler")
+	app.metrics.IncrementCounter("handler.starts", nil)
+
 	if err := handler.Start(); err != nil {
-		handlerLogger.Error("Failed to start handler", "error", err)
-		handlerMetrics.IncrementCounter("start.failures", nil)
+		app.logger.Error("Failed to start handler", "error", err)
+		app.metrics.IncrementCounter("start.failures", nil)
 		log.Fatalf("Failed to start: %v", err)
 	}
 }
