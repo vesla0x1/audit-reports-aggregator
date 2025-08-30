@@ -166,7 +166,7 @@ set-lambda-env:
 	aws --endpoint-url=$(LOCALSTACK_ENDPOINT) \
 	lambda update-function-configuration \
 	--function-name $(LAMBDA_FUNCTION_NAME_DOWNLOADER) \
-	--environment Variables='{S3_BUCKET=audit-reports-local-reports}'
+	--environment Variables='{S3_BUCKET=audit-reports-local,PROJECT_NAME=downloader,OBSERVABILITY_CLOUDWATCH_LOG_GROUP=/workers/downloader}'
 
 .PHONY: db-migrate
 db-migrate:
