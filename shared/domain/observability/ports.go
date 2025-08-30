@@ -1,7 +1,7 @@
 package observability
 
 import (
-	"shared/config"
+	"shared/domain/base"
 )
 
 // Logger defines the interface for structured logging in the application.
@@ -41,16 +41,5 @@ type Metrics interface {
 
 // Factory interface - defined in domain
 type ObservabilityFactory interface {
-	CreateObservability(cfg *config.Config) (Logger, Metrics, error)
-}
-
-// Provider interface for those who need it
-type ObservabilityProvider interface {
-	GetLogger(string) (Logger, error)
-	GetMetrics(string) (Metrics, error)
-	GetObservability(string) (Logger, Metrics, error)
-	MustGetObservability(string) (Logger, Metrics, error)
-	MustGetLogger(string) Logger
-	MustGetMetrics(string) Metrics
-	IsInitialized() bool
+	base.Factory[*ObservabilityComponents]
 }

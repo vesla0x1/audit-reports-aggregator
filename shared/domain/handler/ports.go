@@ -2,7 +2,7 @@ package handler
 
 import (
 	"context"
-	"shared/config"
+	"shared/domain/base"
 	"shared/domain/observability"
 )
 
@@ -31,6 +31,6 @@ type Adapter interface {
 }
 
 type HandlerFactory interface {
-	CreateHandler(useCase UseCase, cfg *config.Config) (Handler, error)
-	CreateAdapter(handler Handler, cfg *config.Config) (Adapter, error)
+	SetUseCase(useCase UseCase)
+	base.Factory[*HandlerComponents]
 }

@@ -20,7 +20,7 @@ type testStorageFactory struct {
 	shouldError bool
 }
 
-func (f *testStorageFactory) CreateStorage(cfg *config.Config) (storage.ObjectStorage, error) {
+func (f *testStorageFactory) Create(cfg *config.Config) (storage.ObjectStorage, error) {
 	if f.shouldError {
 		return nil, errors.New("failed to create storage")
 	}
@@ -178,7 +178,7 @@ func TestProvider_GetStorage(t *testing.T) {
 		provider := storage.GetProvider()
 		provider.Reset()
 
-		storageObj, err := provider.GetStorage()
+		storageObj, err := provider.Get()
 		assert.Error(t, err)
 		assert.Nil(t, storageObj)
 		assert.Contains(t, err.Error(), "not initialized")
@@ -208,7 +208,7 @@ func TestProvider_GetStorage(t *testing.T) {
 		err := provider.Initialize(config, factory)
 		assert.NoError(t, err)
 
-		storageObj, err := provider.GetStorage()
+		storageObj, err := provider.Get()
 		assert.NoError(t, err)
 		assert.NotNil(t, storageObj)
 		assert.Same(t, mockStorageObj, storageObj)
@@ -223,7 +223,7 @@ func TestProvider_MustGetStorage(t *testing.T) {
 		provider.Reset()
 
 		assert.Panics(t, func() {
-			provider.MustGetStorage()
+			provider.MustGet()
 		})
 	})
 
@@ -252,51 +252,9 @@ func TestProvider_MustGetStorage(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.NotPanics(t, func() {
-			storageObj := provider.MustGetStorage()
+			storageObj := provider.MustGet()
 			assert.Same(t, mockStorageObj, storageObj)
 		})
-
-		mockStorageObj.AssertExpectations(t)
-	})
-}
-
-func TestProvider_Close(t *testing.T) {
-	t.Run("close when not initialized", func(t *testing.T) {
-		provider := storage.GetProvider()
-		provider.Reset()
-
-		err := provider.Close()
-		assert.NoError(t, err)
-	})
-
-	t.Run("close when initialized", func(t *testing.T) {
-		provider := storage.GetProvider()
-		provider.Reset()
-
-		mockStorageObj := new(mockStorage.MockObjectStorage)
-		mockStorageObj.On("Exists", mock.Anything, "", ".health-check").Return(false, storage.ErrObjectNotFound)
-
-		factory := &testStorageFactory{
-			mockStorage: mockStorageObj,
-		}
-
-		config := &config.Config{
-			Storage: config.StorageConfig{
-				Provider: "s3",
-				S3: config.S3Config{
-					Region: "us-east-1",
-					Bucket: "test-bucket",
-				},
-			},
-		}
-
-		err := provider.Initialize(config, factory)
-		assert.NoError(t, err)
-		assert.True(t, provider.IsInitialized())
-
-		err = provider.Close()
-		assert.NoError(t, err)
-		assert.False(t, provider.IsInitialized())
 
 		mockStorageObj.AssertExpectations(t)
 	})
@@ -366,7 +324,7 @@ func TestProvider_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := provider.GetStorage()
+			_, err := provider.Get()
 			if err != nil {
 				errors <- err
 			}

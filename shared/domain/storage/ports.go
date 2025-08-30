@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"io"
-	"shared/config"
+	"shared/domain/base"
 )
 
 // ObjectStorage defines the interface for object storage operations
@@ -36,14 +36,5 @@ type ObjectStorage interface {
 }
 
 type StorageFactory interface {
-	CreateStorage(cfg *config.Config) (ObjectStorage, error)
-}
-
-// StorageProvider defines the interface for creating storage instances
-type StorageProvider interface {
-	// GetStorage returns a configured storage instance
-	GetStorage() (ObjectStorage, error)
-
-	// Close cleanly shuts down the storage provider
-	Close() error
+	base.Factory[ObjectStorage]
 }

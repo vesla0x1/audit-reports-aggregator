@@ -1,6 +1,7 @@
 package infrahandler
 
 import (
+	"fmt"
 	"shared/config"
 	"shared/domain/handler"
 	"shared/domain/observability"
@@ -8,15 +9,25 @@ import (
 )
 
 type Factory struct {
+	useCase handler.UseCase
 	Logger  observability.Logger
 	Metrics observability.Metrics
 }
 
-func (f *Factory) CreateHandler(useCase handler.UseCase, cfg *config.Config) (handler.Handler, error) {
-	return NewHandler(useCase, cfg, f.Logger, f.Metrics), nil
+func (f *Factory) Create(cfg *config.Config) (*handler.HandlerComponents, error) {
+	if f.useCase == nil {
+		return nil, fmt.Errorf("use case is required")
+	}
+
+	h := NewHandler(f.useCase, cfg, f.Logger, f.Metrics)
+	a := lambda.NewAdapter(h, &cfg.Lambda)
+
+	return &handler.HandlerComponents{
+		Handler: h,
+		Adapter: a,
+	}, nil
 }
 
-func (f *Factory) CreateAdapter(h handler.Handler, cfg *config.Config) (handler.Adapter, error) {
-	// Since you only use Lambda, create Lambda adapter
-	return lambda.NewAdapter(h, &cfg.Lambda), nil
+func (f *Factory) SetUseCase(useCase handler.UseCase) {
+	f.useCase = useCase
 }

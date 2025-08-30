@@ -1,156 +1,119 @@
 package observability
 
 import (
-	"errors"
 	"fmt"
-	"sync"
-
 	"shared/config"
+	"shared/domain/base"
 )
 
-// Provider manages observability lifecycle
-type Provider struct {
-	logger      Logger
-	metrics     Metrics
-	config      *config.Config
-	mu          sync.RWMutex
-	initialized bool
+// Public API using generic provider
+const observabilityProviderKey = "observability"
+
+type ObservabilityComponents struct {
+	Logger  Logger
+	Metrics Metrics
 }
 
-var (
-	instance *Provider
-	once     sync.Once
-)
-
-// GetProvider returns singleton observability provider
-func GetProvider() *Provider {
-	once.Do(func() {
-		instance = &Provider{}
-	})
-	return instance
+func GetProvider() *base.Provider[*ObservabilityComponents] {
+	return base.GetProvider[*ObservabilityComponents](observabilityProviderKey)
 }
 
-// Initialize sets up logger and metrics based on configuration
-func (p *Provider) Initialize(cfg *config.Config, factory ObservabilityFactory) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+func Initialize(cfg *config.Config, factory ObservabilityFactory) error {
+	return GetProvider().Initialize(cfg, factory)
+}
 
-	if p.initialized {
-		return nil
-	}
-
-	if factory == nil {
-		return errors.New("observability factory is required")
-	}
-
-	// Use factory to create observability components
-	logger, metrics, err := factory.CreateObservability(cfg)
+func GetObservability(component string) (Logger, Metrics, error) {
+	components, err := GetProvider().Get()
 	if err != nil {
-		return fmt.Errorf("failed to create observability: %w", err)
+		return nil, nil, err
 	}
 
-	p.logger = logger
-	p.metrics = metrics
-	p.config = cfg
-	p.initialized = true
-
-	return nil
-}
-
-func (p *Provider) GetObservability(component string) (Logger, Metrics, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
-		return nil, nil, errors.New("observability provider not initialized")
+	cfg, err := GetProvider().GetConfig()
+	if err != nil {
+		return nil, nil, err
 	}
 
-	logger := p.getScopedLogger(component)
-	metrics := p.getScopedMetrics(component)
+	logger := getScopedLogger(components.Logger, cfg, component)
+	metrics := getScopedMetrics(components.Metrics, cfg, component)
 
 	return logger, metrics, nil
 }
 
-func (p *Provider) GetLogger(component string) (Logger, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
-		return nil, errors.New("observability provider not initialized")
-	}
-
-	return p.getScopedLogger(component), nil
-}
-
-func (p *Provider) GetMetrics(component string) (Metrics, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
-		return nil, errors.New("observability provider not initialized")
-	}
-	return p.getScopedMetrics(component), nil
-}
-
-// MustGetLogger returns logger with component field
-func (p *Provider) MustGetLogger(component string) Logger {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
-		panic("observability not initialized")
-	}
-
-	return p.logger.WithFields(map[string]interface{}{"component": component})
-}
-
-// MustGetMetrics returns metrics instance
-func (p *Provider) MustGetMetrics(component string) Metrics {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	metrics, err := p.GetMetrics(component)
+func GetLogger(component string) (Logger, error) {
+	components, err := GetProvider().Get()
 	if err != nil {
-		panic(fmt.Sprintf("failed to get metrics: %v", err))
+		return nil, err
 	}
-	return metrics
+
+	cfg, err := GetProvider().GetConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return getScopedLogger(components.Logger, cfg, component), nil
 }
 
-// MustGetObservability returns both logger and metrics for a component, panics if not initialized
-func (p *Provider) MustGetObservability(component string) (Logger, Metrics) {
-	logger, metrics, err := p.GetObservability(component)
+func GetMetrics(component string) (Metrics, error) {
+	components, err := GetProvider().Get()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := GetProvider().GetConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	return getScopedMetrics(components.Metrics, cfg, component), nil
+}
+
+func MustGetObservability(component string) (Logger, Metrics) {
+	logger, metrics, err := GetObservability(component)
 	if err != nil {
 		panic(fmt.Sprintf("failed to get observability: %v", err))
 	}
 	return logger, metrics
 }
 
-func (p *Provider) IsInitialized() bool {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.initialized
+func MustGetLogger(component string) Logger {
+	logger, err := GetLogger(component)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get logger: %v", err))
+	}
+	return logger
 }
 
-// getScopedLogger creates a logger with component and service metadata
-// This is an internal helper to avoid code duplication
-func (p *Provider) getScopedLogger(component string) Logger {
-	// Add standard fields including component
-	return p.logger.WithFields(map[string]interface{}{
-		"service":   p.config.ServiceName,
-		"version":   p.config.Version,
-		"env":       p.config.Environment,
+func MustGetMetrics(component string) Metrics {
+	metrics, err := GetMetrics(component)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get metrics: %v", err))
+	}
+	return metrics
+}
+
+func IsInitialized() bool {
+	return GetProvider().IsInitialized()
+}
+
+func Reset() {
+	GetProvider().Reset()
+}
+
+// Helper functions for scoping
+func getScopedLogger(logger Logger, cfg *config.Config, component string) Logger {
+	return logger.WithFields(map[string]interface{}{
+		"service":   cfg.ServiceName,
+		"version":   cfg.Version,
+		"env":       cfg.Environment,
 		"component": component,
 	})
 }
 
-// getScopedMetrics creates metrics with component namespace and tags
-func (p *Provider) getScopedMetrics(component string) Metrics {
-	// Use the Metrics interface's methods for scoping
-	// The implementation is in the infrastructure layer
-	return p.metrics.WithTags(map[string]string{
-		"service":   p.config.ServiceName,
-		"version":   p.config.Version,
-		"env":       p.config.Environment,
+func getScopedMetrics(metrics Metrics, cfg *config.Config, component string) Metrics {
+	return metrics.WithTags(map[string]string{
+		"service":   cfg.ServiceName,
+		"version":   cfg.Version,
+		"env":       cfg.Environment,
 		"component": component,
 	})
 }

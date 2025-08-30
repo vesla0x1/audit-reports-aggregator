@@ -26,7 +26,7 @@ func NewFactoryWithObservability(logger observability.Logger, metrics observabil
 	}
 }
 
-func (f *Factory) CreateStorage(cfg *config.Config) (storage.ObjectStorage, error) {
+func (f *Factory) Create(cfg *config.Config) (storage.ObjectStorage, error) {
 	switch strings.ToLower(cfg.GetStorageProvider()) {
 	case "s3":
 		return s3.New(&cfg.Storage, f.logger, f.metrics)

@@ -3,92 +3,81 @@ package handler
 import (
 	"fmt"
 	"shared/config"
-	"sync"
+	"shared/domain/base"
 )
 
-type Provider struct {
-	handler     Handler
-	adapter     Adapter
-	mu          sync.RWMutex
-	initialized bool
+// Public API using generic provider
+const handlerProviderKey = "handler"
+
+type HandlerComponents struct {
+	Handler Handler
+	Adapter Adapter
 }
 
-var (
-	instance *Provider
-	once     sync.Once
-)
-
-func GetProvider() *Provider {
-	once.Do(func() {
-		instance = &Provider{}
-	})
-	return instance
+func GetProvider() *base.Provider[*HandlerComponents] {
+	return base.GetProvider[*HandlerComponents](handlerProviderKey)
 }
 
-func (p *Provider) Initialize(
-	useCase UseCase,
-	cfg *config.Config,
-	factory HandlerFactory,
-) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.initialized {
-		return nil
+// Initialize with UseCase parameter (special case for handler)
+func Initialize(useCase UseCase, cfg *config.Config, factory HandlerFactory) error {
+	if useCase == nil {
+		return fmt.Errorf("use case is required")
 	}
 
 	if factory == nil {
 		return fmt.Errorf("handler factory is required")
 	}
 
-	if useCase == nil {
-		return fmt.Errorf("use case is required")
-	}
+	// Set the use case on the factory
+	factory.SetUseCase(useCase)
 
-	handler, err := factory.CreateHandler(useCase, cfg)
+	return GetProvider().Initialize(cfg, factory)
+}
+
+func GetHandler() (Handler, error) {
+	components, err := GetProvider().Get()
 	if err != nil {
-		return fmt.Errorf("failed to create handler: %w", err)
+		return nil, err
 	}
+	return components.Handler, nil
+}
 
-	// Factory creates adapter
-	adapter, err := factory.CreateAdapter(handler, cfg)
+func MustGetHandler() Handler {
+	handler, err := GetHandler()
 	if err != nil {
-		return fmt.Errorf("failed to create adapter: %w", err)
+		panic(fmt.Sprintf("failed to get handler: %v", err))
 	}
-
-	p.handler = handler
-	p.adapter = adapter
-	p.initialized = true
-	return nil
+	return handler
 }
 
-func (p *Provider) MustGetHandler() Handler {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
-		panic("handler not initialized")
+func GetAdapter() (Adapter, error) {
+	components, err := GetProvider().Get()
+	if err != nil {
+		return nil, err
 	}
-	return p.handler
+	return components.Adapter, nil
 }
 
-func (p *Provider) GetHandler() (Handler, error) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
-		return nil, fmt.Errorf("handler not initialized")
+func MustGetAdapter() Adapter {
+	adapter, err := GetAdapter()
+	if err != nil {
+		panic(fmt.Sprintf("failed to get adapter: %v", err))
 	}
-	return p.handler, nil
+	return adapter
 }
 
-func (p *Provider) Start() error {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if !p.initialized {
+func Start() error {
+	adapter, err := GetAdapter()
+	if err != nil {
 		return fmt.Errorf("handler not initialized")
 	}
+	return adapter.Start()
+}
 
-	return p.adapter.Start()
+func IsInitialized() bool {
+	return GetProvider().IsInitialized()
+}
+
+func Reset() {
+	GetProvider().Reset()
 }
