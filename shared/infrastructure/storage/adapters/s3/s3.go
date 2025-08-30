@@ -23,7 +23,7 @@ import (
 // Client implements ObjectStorage interface for AWS S3
 type Client struct {
 	s3      *s3.Client
-	config  *config.S3Config
+	config  *config.StorageConfig
 	logger  observability.Logger
 	metrics observability.Metrics
 }
@@ -51,10 +51,6 @@ func newClientBuilder(cfg *config.StorageConfig, logger observability.Logger, me
 }
 
 func (b *clientBuilder) Build() (*Client, error) {
-	if err := b.config.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid S3 configuration: %w", err)
-	}
-
 	awsCfg, err := b.buildAWSConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build AWS config: %w", err)
@@ -107,7 +103,7 @@ func (b *clientBuilder) createClient(awsCfg aws.Config) *Client {
 
 	return &Client{
 		s3:      s3Client,
-		config:  &b.config.S3,
+		config:  b.config,
 		logger:  b.logger,
 		metrics: b.metrics,
 	}
@@ -115,7 +111,7 @@ func (b *clientBuilder) createClient(awsCfg aws.Config) *Client {
 
 func (b *clientBuilder) logSuccess() {
 	b.logger.Info("S3 client initialized successfully",
-		"bucket", b.config.S3.Bucket,
+		"bucket", b.config.BucketOrPath,
 		"region", b.config.S3.Region)
 }
 
@@ -128,24 +124,24 @@ func (c *Client) verifyConnection() error {
 	if err := c.ensureBucketExists(ctx); err != nil {
 		c.logger.Error("Failed to verify bucket existence",
 			"error", err,
-			"bucket", c.config.Bucket)
+			"bucket", c.config.BucketOrPath)
 		return fmt.Errorf("failed to verify bucket existence: %w", err)
 	}
 	return nil
 }
 
 func (c *Client) ensureBucketExists(ctx context.Context) error {
-	exists, err := c.bucketExists(ctx, c.config.Bucket)
+	exists, err := c.bucketExists(ctx, c.config.BucketOrPath)
 	if err != nil {
 		return err
 	}
 
 	if !exists {
-		c.logger.Info("Bucket does not exist, creating", "bucket", c.config.Bucket)
-		return c.CreateBucket(ctx, c.config.Bucket)
+		c.logger.Info("Bucket does not exist, creating", "bucket", c.config.BucketOrPath)
+		return c.CreateBucket(ctx, c.config.BucketOrPath)
 	}
 
-	c.logger.Info("Bucket exists", "bucket", c.config.Bucket)
+	c.logger.Info("Bucket exists", "bucket", c.config.BucketOrPath)
 	return nil
 }
 
@@ -678,7 +674,7 @@ func (op *createBucketOperation) buildInput() *s3.CreateBucketInput {
 
 	if op.needsLocationConstraint() {
 		input.CreateBucketConfiguration = &s3types.CreateBucketConfiguration{
-			LocationConstraint: s3types.BucketLocationConstraint(op.client.config.Region),
+			LocationConstraint: s3types.BucketLocationConstraint(op.client.config.S3.Region),
 		}
 	}
 
@@ -686,7 +682,7 @@ func (op *createBucketOperation) buildInput() *s3.CreateBucketInput {
 }
 
 func (op *createBucketOperation) needsLocationConstraint() bool {
-	return op.client.config.Region != "" && op.client.config.Region != "us-east-1"
+	return op.client.config.S3.Region != "" && op.client.config.S3.Region != "us-east-1"
 }
 
 func (op *createBucketOperation) create(ctx context.Context, input *s3.CreateBucketInput) error {
@@ -770,7 +766,7 @@ func (op *deleteBucketOperation) recordSuccess(duration time.Duration) {
 
 func (c *Client) resolveBucket(bucket string) string {
 	if bucket == "" {
-		return c.config.Bucket
+		return c.config.BucketOrPath
 	}
 	return bucket
 }

@@ -2,12 +2,12 @@ package infrastorage
 
 import (
 	"fmt"
-	"log"
+
 	"shared/config"
 	"shared/domain/observability"
 	"shared/domain/storage"
+	"shared/infrastructure/storage/adapters/fs"
 	"shared/infrastructure/storage/adapters/s3"
-	"strings"
 )
 
 type Factory struct {
@@ -15,10 +15,9 @@ type Factory struct {
 	metrics observability.Metrics
 }
 
-func NewFactoryWithObservability(logger observability.Logger, metrics observability.Metrics) storage.StorageFactory {
+func NewFactory(logger observability.Logger, metrics observability.Metrics) storage.StorageFactory {
 	if logger == nil || metrics == nil {
-		log.Fatalf("logger and metrics must be provided")
-		return nil
+		panic("logger and metrics are required for storage factory")
 	}
 	return &Factory{
 		logger:  logger,
@@ -27,11 +26,19 @@ func NewFactoryWithObservability(logger observability.Logger, metrics observabil
 }
 
 func (f *Factory) Create(cfg *config.Config) (storage.ObjectStorage, error) {
-	switch strings.ToLower(cfg.GetStorageProvider()) {
+	switch cfg.Adapters.Storage {
 	case "s3":
+		f.logger.Info("Creating S3 storage adapter",
+			"bucket", cfg.Storage.BucketOrPath,
+			"region", cfg.Storage.S3.Region)
 		return s3.New(&cfg.Storage, f.logger, f.metrics)
-	default:
-		return nil, fmt.Errorf("unsupported provider: %s", cfg.GetStorageProvider())
-	}
 
+	case "filesystem":
+		f.logger.Info("Creating filesystem storage adapter",
+			"path", cfg.Storage.BucketOrPath)
+		return fs.NewStorage(cfg.Storage.BucketOrPath, f.logger, f.metrics)
+
+	default:
+		return nil, fmt.Errorf("unsupported storage adapter: %s", cfg.Adapters.Storage)
+	}
 }

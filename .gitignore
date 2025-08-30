@@ -5,7 +5,7 @@
 .env.staging
 .env.prod
 .env.*
-!.env.example
+!.env.*.example
 !.env.sample
 
 # ==================== Terraform ====================

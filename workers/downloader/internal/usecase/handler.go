@@ -181,7 +181,7 @@ func (w *DownloaderWorker) Run(ctx context.Context, request handler.Request) (ha
 
 func (w *DownloaderWorker) processContent(reader io.Reader) (int64, error) {
 	metadata := storage.ObjectMetadata{ContentType: "application/octet-stream"}
-	err := w.objectStorage.Put(context.Background(), "audit-reports-local-reports", "cantina/cantina-report.pdf", reader, metadata)
+	err := w.objectStorage.Put(context.Background(), "audit-reports-local", "cantina/cantina-report.pdf", reader, metadata)
 	return 0, err
 }
 

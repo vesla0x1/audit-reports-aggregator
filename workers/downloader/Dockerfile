@@ -18,6 +18,7 @@ COPY workers/downloader/ ./workers/downloader/
 WORKDIR /build/workers/downloader
 
 # Copy go mod files and download dependencies
+RUN go env -w GOPROXY=https://proxy.golang.org,direct
 RUN go mod download
 
 # Build the binary
@@ -47,10 +48,6 @@ USER app
 
 # Expose port for HTTP mode
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD ["./handler", "-health"] || exit 1
 
 # Run the handler
 CMD ["./handler"]

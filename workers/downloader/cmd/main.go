@@ -41,9 +41,8 @@ type Application struct {
 
 // loadConfiguration loads and validates the application configuration
 func loadConfiguration() *config.Config {
-	cfgProvider := config.GetProvider()
-	cfgProvider.MustLoad()
-	return cfgProvider.MustGet()
+	config.MustLoad()
+	return config.MustGet()
 }
 
 // initializeDependencies sets up all infrastructure dependencies
@@ -89,8 +88,7 @@ func initializeStorage(cfg *config.Config) storage.ObjectStorage {
 	logger, metrics := observability.MustGetObservability("storage.s3")
 	logger.Info("calling storage creation")
 
-	factory := infrastorage.NewFactoryWithObservability(logger, metrics)
-
+	factory := infrastorage.NewFactory(logger, metrics)
 	if err := storage.Initialize(cfg, factory); err != nil {
 		logger.Error("Failed to initialize storage", "error", err)
 		metrics.IncrementCounter("init.failures", nil)
@@ -145,10 +143,8 @@ func createUseCase(deps *Dependencies) handler.UseCase {
 func initializeHandler(useCase handler.UseCase, cfg *config.Config) {
 	logger, metrics := observability.MustGetObservability("handler.download")
 
-	if err := handler.Initialize(useCase, cfg, &infrahandler.Factory{
-		Logger:  logger,
-		Metrics: metrics,
-	}); err != nil {
+	factory := infrahandler.NewFactory(logger, metrics)
+	if err := handler.Initialize(useCase, cfg, factory); err != nil {
 		logger.Error("Failed to initialize handler", "error", err)
 		metrics.IncrementCounter("init.failures", nil)
 		log.Fatalf("Failed to initialize handler: %v", err)
