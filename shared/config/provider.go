@@ -207,6 +207,13 @@ func (p *Provider) parseConfig() (*Config, error) {
 			CloudWatchLogGroup:  getEnv("OBSERVABILITY_CLOUDWATCH_LOG_GROUP", ""),
 			CloudWatchNamespace: getEnv("OBSERVABILITY_CLOUDWATCH_NAMESPACE", ""),
 		},
+
+		RabbitMQ: RabbitMQConfig{
+			URL:           getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+			Queue:         getEnv("RABBITMQ_QUEUE", "default-queue"),
+			PrefetchCount: getInt("RABBITMQ_PREFETCH_COUNT", 10),
+			Timeout:       getDuration("RABBITMQ_TIMEOUT", "30s"),
+		},
 	}
 
 	// Apply defaults

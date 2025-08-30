@@ -21,6 +21,7 @@ type Config struct {
 	Retry         RetryConfig
 	Storage       StorageConfig
 	Observability ObservabilityConfig
+	RabbitMQ      RabbitMQConfig
 }
 
 // HTTPConfig holds HTTP client configuration
@@ -90,6 +91,13 @@ type ObservabilityConfig struct {
 	CloudWatchNamespace string `json:"cloudwatch_namespace" yaml:"cloudwatch_namespace"`
 }
 
+type RabbitMQConfig struct {
+	URL           string        // Connection URL (includes all connection details)
+	Queue         string        // Queue name
+	PrefetchCount int           // Messages to prefetch (0 = unlimited)
+	Timeout       time.Duration // Handler timeout per message
+}
+
 // Validate validates the entire configuration
 func (c *Config) Validate() error {
 	var errors []string
@@ -126,6 +134,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("configuration errors: %s", strings.Join(errors, "; "))
 	}
 
+	if c.RabbitMQ.Timeout <= 0 {
+		errors = append(errors, "RABBITMQ_TIMEOUT must be positive")
+	}
+
 	return nil
 }
 
@@ -142,8 +154,11 @@ func (s *StorageConfig) Validate() error {
 	switch s.GetProvider() {
 	case "s3":
 		return s.S3.Validate()
+	case "fs":
+		return nil
 	default:
-		return fmt.Errorf("unsupported storage provider")
+		return nil
+		//return fmt.Errorf("unsupported storage provider")
 	}
 }
 

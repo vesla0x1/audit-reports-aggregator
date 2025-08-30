@@ -71,6 +71,15 @@ func DefaultObservabilityConfig() ObservabilityConfig {
 	}
 }
 
+func DefaultRabbitMQConfig() RabbitMQConfig {
+	return RabbitMQConfig{
+		URL:           "amqp://admin:admin@localhost:5672/",
+		Queue:         "default-queue",
+		PrefetchCount: 10,
+		Timeout:       30 * time.Second,
+	}
+}
+
 // DefaultConfig returns a complete configuration with sensible defaults
 // This is useful for testing or when you want to start with defaults and override specific parts
 func DefaultConfig() *Config {
@@ -87,5 +96,6 @@ func DefaultConfig() *Config {
 		Retry:         DefaultRetryConfig(),
 		Storage:       DefaultStorageConfig(),
 		Observability: DefaultObservabilityConfig(),
+		RabbitMQ:      DefaultRabbitMQConfig(),
 	}
 }
