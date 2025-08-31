@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"downloader/internal/domain"
 	"downloader/internal/infrastructure/adapters/http"
 	"downloader/internal/usecase"
 	"log"
 	"shared/config"
+	"shared/domain/database"
 	"shared/domain/handler"
 	"shared/domain/observability"
 	"shared/domain/storage"
+	infradatabase "shared/infrastructure/database"
 	infrahandler "shared/infrastructure/handlers"
 	infraobs "shared/infrastructure/observability"
 	infrastorage "shared/infrastructure/storage"
+	"time"
 )
 
 func main() {
@@ -27,6 +31,7 @@ func main() {
 // Dependencies holds all initialized infrastructure components
 type Dependencies struct {
 	storage    storage.ObjectStorage
+	database   database.Database
 	httpClient *http.Client
 	logger     observability.Logger
 	metrics    observability.Metrics
@@ -51,6 +56,7 @@ func initializeDependencies(cfg *config.Config) *Dependencies {
 
 	logStartup(cfg)
 
+	db := initializeDatabase(cfg)
 	storageClient := initializeStorage(cfg)
 	httpClient := createHTTPClient(cfg)
 
@@ -58,6 +64,7 @@ func initializeDependencies(cfg *config.Config) *Dependencies {
 
 	return &Dependencies{
 		storage:    storageClient,
+		database:   db,
 		httpClient: httpClient,
 		logger:     logger,
 		metrics:    metrics,
@@ -81,6 +88,34 @@ func logStartup(cfg *config.Config) {
 		"environment", cfg.Environment)
 
 	metrics.IncrementCounter("application.starts", nil)
+}
+
+// initializeDatabase sets up the database connection
+func initializeDatabase(cfg *config.Config) database.Database {
+	logger, metrics := observability.MustGetObservability("database")
+	logger.Info("Initializing database", "adapter", cfg.Adapters.Database)
+
+	factory := infradatabase.NewFactory(logger, metrics)
+	if err := database.Initialize(cfg, factory); err != nil {
+		logger.Error("Failed to initialize database", "error", err)
+		metrics.IncrementCounter("init.failures", map[string]string{"component": "database"})
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+
+	// Test connection
+	db := database.MustGetDatabase()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := db.Ping(ctx); err != nil {
+		logger.Error("Database ping failed", "error", err)
+		log.Fatalf("Failed to ping database: %v", err)
+	}
+
+	logger.Info("Database initialized successfully")
+	metrics.IncrementCounter("init.success", map[string]string{"component": "database"})
+
+	return db
 }
 
 // initializeStorage sets up the storage provider with observability

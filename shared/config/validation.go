@@ -1,4 +1,3 @@
-// config/validation.go
 package config
 
 import (
@@ -56,6 +55,19 @@ func (c *Config) Validate() error {
 	// Validate retry config
 	if err := c.Retry.Validate(); err != nil {
 		errors = append(errors, err.Error())
+	}
+
+	// Validate database if configured
+	if c.Adapters.Database != "" {
+		validDatabases := map[string]bool{"postgres": true}
+
+		if !validDatabases[c.Adapters.Database] {
+			errors = append(errors, fmt.Sprintf("invalid database adapter: %s", c.Adapters.Database))
+		}
+
+		if err := c.Database.Validate(); err != nil {
+			errors = append(errors, err.Error())
+		}
 	}
 
 	if len(errors) > 0 {
@@ -204,5 +216,48 @@ func (r *RetryConfig) Validate() error {
 	if r.BackoffMultiplier < 1.0 {
 		return fmt.Errorf("RETRY_BACKOFF_MULTIPLIER must be >= 1.0")
 	}
+	return nil
+}
+
+// Validate validates Database configuration
+func (d *DatabaseConfig) Validate() error {
+	var errors []string
+
+	// Required connection settings
+	if d.Host == "" {
+		errors = append(errors, "DB_HOST is required")
+	}
+
+	if d.Port <= 0 || d.Port > 65535 {
+		errors = append(errors, "DB_PORT must be between 1 and 65535")
+	}
+
+	if d.Database == "" {
+		errors = append(errors, "DB_NAME is required")
+	}
+
+	if d.Username == "" {
+		errors = append(errors, "DB_USER is required")
+	}
+
+	// Password can be empty for some local setups, so we don't validate it
+
+	// Optional connection pool validation (only if set)
+	if d.MaxOpenConns < 0 {
+		errors = append(errors, "DB_MAX_OPEN_CONNS cannot be negative")
+	}
+
+	if d.MaxIdleConns < 0 {
+		errors = append(errors, "DB_MAX_IDLE_CONNS cannot be negative")
+	}
+
+	if d.MaxOpenConns > 0 && d.MaxIdleConns > d.MaxOpenConns {
+		errors = append(errors, "DB_MAX_IDLE_CONNS cannot be greater than DB_MAX_OPEN_CONNS")
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("database configuration errors: %s", strings.Join(errors, "; "))
+	}
+
 	return nil
 }

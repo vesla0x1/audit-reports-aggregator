@@ -1,4 +1,3 @@
-// config/parser.go
 package config
 
 // parse reads configuration from environment variables
@@ -12,10 +11,25 @@ func parse() (*Config, error) {
 
 		// Adapter selection
 		Adapters: AdapterConfig{
-			Handler: getEnv("ADAPTER_HANDLER", ""),
-			Storage: getEnv("ADAPTER_STORAGE", ""),
-			Logger:  getEnv("ADAPTER_LOGGER", ""),
-			Metrics: getEnv("ADAPTER_METRICS", ""),
+			Handler:  getEnv("ADAPTER_HANDLER", ""),
+			Storage:  getEnv("ADAPTER_STORAGE", ""),
+			Database: getEnv("ADAPTER_DATABASE", ""),
+			Logger:   getEnv("ADAPTER_LOGGER", ""),
+			Metrics:  getEnv("ADAPTER_METRICS", ""),
+		},
+
+		// Database Configuration
+		Database: DatabaseConfig{
+			Host:     getEnv("DB_HOST", "localhost"),
+			Port:     getInt("DB_PORT", 5432),
+			Database: getEnv("DB_NAME", "myapp"),
+			Username: getEnv("DB_USER", "postgres"),
+			Password: getEnv("DB_PASSWORD", "postgres"),
+			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
+
+			// Connection pool
+			MaxOpenConns: getInt("DB_MAX_OPEN_CONNS", 25),
+			MaxIdleConns: getInt("DB_MAX_IDLE_CONNS", 5),
 		},
 
 		// HTTP Configuration

@@ -21,6 +21,7 @@ func DefaultConfig() *Config {
 		Handler:       DefaultHandlerConfig(),
 		Retry:         DefaultRetryConfig(),
 		Storage:       DefaultStorageConfig(),
+		Database:      DefaultDatabaseConfig(),
 		Observability: DefaultObservabilityConfig(),
 		RabbitMQ:      DefaultRabbitMQConfig(),
 	}
@@ -29,10 +30,11 @@ func DefaultConfig() *Config {
 // DefaultAdapterConfig returns default adapter selection
 func DefaultAdapterConfig() AdapterConfig {
 	return AdapterConfig{
-		Handler: "http",
-		Storage: "filesystem",
-		Logger:  "stdout",
-		Metrics: "stdout",
+		Handler:  "http",
+		Storage:  "filesystem",
+		Database: "postgres",
+		Logger:   "stdout",
+		Metrics:  "stdout",
 	}
 }
 
@@ -93,6 +95,20 @@ func DefaultS3Config() S3Config {
 	}
 }
 
+// DefaultDatabaseConfig returns sensible defaults for database configuration
+func DefaultDatabaseConfig() DatabaseConfig {
+	return DatabaseConfig{
+		Host:         "localhost",
+		Port:         5432,
+		Database:     "audit_reports_aggregator",
+		Username:     "postgres",
+		Password:     "postgres",
+		MaxOpenConns: 25,
+		MaxIdleConns: 5,
+		SSLMode:      "disable",
+	}
+}
+
 // DefaultObservabilityConfig returns sensible defaults for observability configuration
 func DefaultObservabilityConfig() ObservabilityConfig {
 	return ObservabilityConfig{
@@ -122,6 +138,9 @@ func applyDefaults(cfg *Config) {
 		if cfg.Adapters.Storage == "" {
 			cfg.Adapters.Storage = "filesystem"
 		}
+		if cfg.Adapters.Database == "" {
+			cfg.Adapters.Database = "postgres"
+		}
 		if cfg.Adapters.Logger == "" {
 			cfg.Adapters.Logger = "stdout"
 		}
@@ -137,6 +156,9 @@ func applyDefaults(cfg *Config) {
 		}
 		if cfg.Adapters.Storage == "" {
 			cfg.Adapters.Storage = "s3"
+		}
+		if cfg.Adapters.Database == "" {
+			cfg.Adapters.Database = "postgres"
 		}
 		if cfg.Adapters.Logger == "" {
 			cfg.Adapters.Logger = "cloudwatch"

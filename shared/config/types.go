@@ -21,16 +21,31 @@ type Config struct {
 	Handler       HandlerConfig
 	Retry         RetryConfig
 	Storage       StorageConfig
+	Database      DatabaseConfig
 	Observability ObservabilityConfig
 	RabbitMQ      RabbitMQConfig
 }
 
 // AdapterConfig specifies which implementations to use
 type AdapterConfig struct {
-	Handler string // "lambda", "http", "rabbitmq"
-	Storage string // "s3", "filesystem"
-	Logger  string // "cloudwatch", "stdout"
-	Metrics string // "cloudwatch", "stdout"
+	Handler  string // "lambda", "http", "rabbitmq"
+	Storage  string // "s3", "filesystem"
+	Database string // "postgres"
+	Logger   string // "cloudwatch", "stdout"
+	Metrics  string // "cloudwatch", "stdout"
+}
+
+// DatabaseConfig holds database configuration
+type DatabaseConfig struct {
+	// Connection settings
+	Host         string
+	Port         int
+	Database     string
+	Username     string
+	Password     string
+	MaxOpenConns int
+	MaxIdleConns int
+	SSLMode      string
 }
 
 // HTTPConfig holds HTTP configuration
