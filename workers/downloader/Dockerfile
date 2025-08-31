@@ -18,7 +18,6 @@ COPY workers/downloader/ ./workers/downloader/
 WORKDIR /build/workers/downloader
 
 # Copy go mod files and download dependencies
-RUN go env -w GOPROXY=https://proxy.golang.org,direct
 RUN go mod download
 
 # Build the binary

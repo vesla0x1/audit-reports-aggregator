@@ -22,7 +22,6 @@ type Adapter struct {
 
 // NewAdapter creates a new RabbitMQ adapter with minimal config
 func NewAdapter(h handler.Handler, cfg *config.RabbitMQConfig) *Adapter {
-	fmt.Println(cfg.URL)
 	return &Adapter{
 		handler: h,
 		config:  cfg,
