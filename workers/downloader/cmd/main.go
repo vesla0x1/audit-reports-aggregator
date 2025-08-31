@@ -10,10 +10,12 @@ import (
 	"shared/domain/database"
 	"shared/domain/handler"
 	"shared/domain/observability"
+	"shared/domain/repository"
 	"shared/domain/storage"
 	infradatabase "shared/infrastructure/database"
 	infrahandler "shared/infrastructure/handlers"
 	infraobs "shared/infrastructure/observability"
+	infrarepo "shared/infrastructure/repository"
 	infrastorage "shared/infrastructure/storage"
 	"time"
 )
@@ -30,11 +32,12 @@ func main() {
 
 // Dependencies holds all initialized infrastructure components
 type Dependencies struct {
-	storage    storage.ObjectStorage
-	database   database.Database
-	httpClient *http.Client
-	logger     observability.Logger
-	metrics    observability.Metrics
+	storage      storage.ObjectStorage
+	database     database.Database
+	httpClient   *http.Client
+	logger       observability.Logger
+	metrics      observability.Metrics
+	repositories *repository.Repositories
 }
 
 // Application holds the complete application stack
@@ -61,13 +64,20 @@ func initializeDependencies(cfg *config.Config) *Dependencies {
 	httpClient := createHTTPClient(cfg)
 
 	logger, metrics := observability.MustGetObservability("app")
+	logger.Info("Repositories initialized successfully")
+
+	// Create repositories
+	repositories := repository.NewRepositories(
+		infrarepo.NewAuditReportRepository(db),
+	)
 
 	return &Dependencies{
-		storage:    storageClient,
-		database:   db,
-		httpClient: httpClient,
-		logger:     logger,
-		metrics:    metrics,
+		storage:      storageClient,
+		database:     db,
+		httpClient:   httpClient,
+		repositories: repositories,
+		logger:       logger,
+		metrics:      metrics,
 	}
 }
 
@@ -169,6 +179,7 @@ func createUseCase(deps *Dependencies) handler.UseCase {
 	return usecase.NewDownloaderWorker(
 		downloadService,
 		deps.storage,
+		deps.repositories,
 		logger,
 		metrics,
 	)

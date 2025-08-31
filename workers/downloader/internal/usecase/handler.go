@@ -7,13 +7,16 @@ import (
 
 	"downloader/internal/domain"
 	"shared/domain/handler"
+	"shared/domain/model"
 	"shared/domain/observability"
+	"shared/domain/repository"
 	"shared/domain/storage"
 )
 
 type DownloaderWorker struct {
 	downloadService *domain.DownloadService
 	objectStorage   storage.ObjectStorage
+	repositories    *repository.Repositories
 	logger          observability.Logger
 	metrics         observability.Metrics
 }
@@ -21,12 +24,14 @@ type DownloaderWorker struct {
 func NewDownloaderWorker(
 	downloadService *domain.DownloadService,
 	objectStorage storage.ObjectStorage,
+	repositories *repository.Repositories,
 	logger observability.Logger,
 	metrics observability.Metrics,
 ) *DownloaderWorker {
 	return &DownloaderWorker{
 		downloadService: downloadService,
 		objectStorage:   objectStorage,
+		repositories:    repositories,
 		logger:          logger,
 		metrics:         metrics,
 	}
@@ -48,6 +53,41 @@ func (w *DownloaderWorker) Run(ctx context.Context, request handler.Request) (ha
 		"worker": w.Name(),
 		"type":   request.Type,
 	})
+
+	auditReportModel, err := model.NewAuditReport(1, "test", model.AuditReportTypeCompetition, "foo")
+	if err != nil {
+		w.logger.Error("Download execution failed",
+			"error", err,
+			"request_id", request.ID,
+		)
+
+		return handler.Response{
+			Success: false,
+			Error: &handler.ErrorInfo{
+				Code:      "",
+				Message:   "",
+				Retryable: false,
+			},
+		}, nil
+	}
+
+	if err := w.repositories.AuditReport.Create(ctx, auditReportModel); err != nil {
+		w.logger.Error("Download execution failed",
+			"error", err,
+			"request_id", request.ID,
+		)
+
+		return handler.Response{
+			Success: false,
+			Error: &handler.ErrorInfo{
+				Code:      "",
+				Message:   "",
+				Retryable: false,
+			},
+		}, nil
+	}
+
+	w.logger.Info("audit report inserted!")
 
 	// Parse request
 	var downloadReq domain.DownloadRequest

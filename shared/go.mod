@@ -3,6 +3,7 @@ module shared
 go 1.24.3
 
 require (
+	github.com/Masterminds/squirrel v1.5.4
 	github.com/aws/aws-lambda-go v1.49.0
 	github.com/aws/aws-sdk-go-v2 v1.38.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.3
@@ -12,6 +13,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.87.1
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/lib/pq v1.10.9
 	github.com/streadway/amqp v1.1.0
 	github.com/stretchr/testify v1.10.0
 )
@@ -33,6 +35,8 @@ require (
 	github.com/aws/smithy-go v1.23.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
+	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
+	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
