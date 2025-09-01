@@ -19,11 +19,6 @@ func (c *Config) Validate() error {
 		errors = append(errors, err.Error())
 	}
 
-	// Validate handler config
-	if err := c.Runtime.Validate(); err != nil {
-		errors = append(errors, err.Error())
-	}
-
 	// Validate component configs based on selected adapters
 	switch c.Adapters.Runtime {
 	case "http":
@@ -50,11 +45,6 @@ func (c *Config) Validate() error {
 		if err := c.Observability.Validate(c.Adapters); err != nil {
 			errors = append(errors, err.Error())
 		}
-	}
-
-	// Validate retry config
-	if err := c.Retry.Validate(); err != nil {
-		errors = append(errors, err.Error())
 	}
 
 	// Validate database if configured
@@ -124,17 +114,6 @@ func (l *LambdaConfig) Validate() error {
 	return nil
 }
 
-// Validate validates Handler configuration
-func (h *RuntimeConfig) Validate() error {
-	if h.Timeout <= 0 {
-		return fmt.Errorf("HANDLER_TIMEOUT must be positive")
-	}
-	if h.MaxRequestSize <= 0 {
-		return fmt.Errorf("HANDLER_MAX_REQUEST_SIZE must be positive")
-	}
-	return nil
-}
-
 // Validate validates RabbitMQ configuration
 func (r *RabbitMQConfig) Validate() error {
 	if r.URL == "" {
@@ -199,23 +178,6 @@ func (o *ObservabilityConfig) Validate(adapters AdapterConfig) error {
 		}
 	}
 
-	return nil
-}
-
-// Validate validates Retry configuration
-func (r *RetryConfig) Validate() error {
-	if r.MaxAttempts < 0 {
-		return fmt.Errorf("RETRY_MAX_ATTEMPTS cannot be negative")
-	}
-	if r.InitialBackoff <= 0 {
-		return fmt.Errorf("RETRY_INITIAL_BACKOFF must be positive")
-	}
-	if r.MaxBackoff <= 0 {
-		return fmt.Errorf("RETRY_MAX_BACKOFF must be positive")
-	}
-	if r.BackoffMultiplier < 1.0 {
-		return fmt.Errorf("RETRY_BACKOFF_MULTIPLIER must be >= 1.0")
-	}
 	return nil
 }
 

@@ -46,29 +46,11 @@ func parse() (*Config, error) {
 			EnablePartialBatchFailure: getBool("LAMBDA_PARTIAL_BATCH_FAILURE", true),
 		},
 
-		// Runtime Configuration
-		Runtime: RuntimeConfig{
-			Timeout:        getDuration("RUNTIME_TIMEOUT", "30s"),
-			MaxRequestSize: int64(getInt("RUNTIME_MAX_REQUEST_SIZE", 10*1024*1024)),
-			EnableHealth:   getBool("RUNTIME_ENABLE_HEALTH", true),
-			EnableMetrics:  getBool("RUNTIME_ENABLE_METRICS", true),
-			EnableTracing:  getBool("RUNTIME_ENABLE_TRACING", true),
-		},
-
-		// Retry Configuration
-		Retry: RetryConfig{
-			MaxAttempts:       getInt("RETRY_MAX_ATTEMPTS", 3),
-			InitialBackoff:    getDuration("RETRY_INITIAL_BACKOFF", "100ms"),
-			MaxBackoff:        getDuration("RETRY_MAX_BACKOFF", "10s"),
-			BackoffMultiplier: getFloat64("RETRY_BACKOFF_MULTIPLIER", 2.0),
-		},
-
 		// Storage Configuration
 		Storage: StorageConfig{
-			BucketOrPath:  getEnv("STORAGE_BUCKET_OR_PATH", ""),
-			EnableMetrics: getBool("STORAGE_ENABLE_METRICS", true),
-			MaxRetries:    getInt("STORAGE_MAX_RETRIES", 3),
-			Timeout:       getDuration("STORAGE_TIMEOUT", "30s"),
+			BucketOrPath: getEnv("STORAGE_BUCKET_OR_PATH", ""),
+			MaxRetries:   getInt("STORAGE_MAX_RETRIES", 3),
+			Timeout:      getDuration("STORAGE_TIMEOUT", "30s"),
 			S3: S3Config{
 				Region:          getEnv("AWS_REGION", "us-east-2"),
 				AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),

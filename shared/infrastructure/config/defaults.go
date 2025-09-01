@@ -18,8 +18,6 @@ func DefaultConfig() *Config {
 		Adapters:      DefaultAdapterConfig(),
 		HTTP:          DefaultHTTPConfig(),
 		Lambda:        DefaultLambdaConfig(),
-		Runtime:       DefaultRuntimeConfig(),
-		Retry:         DefaultRetryConfig(),
 		Storage:       DefaultStorageConfig(),
 		Database:      DefaultDatabaseConfig(),
 		Observability: DefaultObservabilityConfig(),
@@ -56,35 +54,13 @@ func DefaultLambdaConfig() LambdaConfig {
 	}
 }
 
-// DefaultRuntimeConfig returns sensible defaults for handler configuration
-func DefaultRuntimeConfig() RuntimeConfig {
-	return RuntimeConfig{
-		Timeout:        30 * time.Second,
-		MaxRequestSize: 10 * 1024 * 1024, // 10MB
-		EnableHealth:   true,
-		EnableMetrics:  true,
-		EnableTracing:  true,
-	}
-}
-
-// DefaultRetryConfig returns sensible defaults for retry configuration
-func DefaultRetryConfig() RetryConfig {
-	return RetryConfig{
-		MaxAttempts:       3,
-		InitialBackoff:    100 * time.Millisecond,
-		MaxBackoff:        10 * time.Second,
-		BackoffMultiplier: 2.0,
-	}
-}
-
 // DefaultStorageConfig returns sensible defaults for storage configuration
 func DefaultStorageConfig() StorageConfig {
 	return StorageConfig{
-		BucketOrPath:  "/tmp/storage",
-		EnableMetrics: true,
-		MaxRetries:    3,
-		Timeout:       30 * time.Second,
-		S3:            DefaultS3Config(),
+		BucketOrPath: "/tmp/storage",
+		MaxRetries:   3,
+		Timeout:      30 * time.Second,
+		S3:           DefaultS3Config(),
 	}
 }
 
@@ -166,15 +142,6 @@ func applyDefaults(cfg *Config) {
 		if cfg.Adapters.Metrics == "" {
 			cfg.Adapters.Metrics = "cloudwatch"
 		}
-		// More conservative settings for production
-		if cfg.Runtime.Timeout < 60*time.Second {
-			cfg.Runtime.Timeout = 60 * time.Second
-		}
-		if cfg.Retry.MaxAttempts < 5 {
-			cfg.Retry.MaxAttempts = 5
-		}
-		cfg.Runtime.EnableMetrics = true
-		cfg.Runtime.EnableTracing = true
 	}
 
 	// Set bucket/path default if still empty

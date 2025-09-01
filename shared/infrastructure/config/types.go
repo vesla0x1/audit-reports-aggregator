@@ -18,8 +18,6 @@ type Config struct {
 	// Component configurations
 	HTTP          HTTPConfig
 	Lambda        LambdaConfig
-	Runtime       RuntimeConfig
-	Retry         RetryConfig
 	Storage       StorageConfig
 	Database      DatabaseConfig
 	Observability ObservabilityConfig
@@ -62,30 +60,11 @@ type LambdaConfig struct {
 	EnablePartialBatchFailure bool
 }
 
-// RuntimeConfig holds handler configuration
-type RuntimeConfig struct {
-	Timeout        time.Duration
-	MaxRequestSize int64
-	EnableHealth   bool
-	EnableMetrics  bool
-	EnableTracing  bool
-}
-
-// RetryConfig holds retry policy configuration
-type RetryConfig struct {
-	MaxAttempts       int
-	InitialBackoff    time.Duration
-	MaxBackoff        time.Duration
-	BackoffMultiplier float64
-}
-
-// StorageConfig holds storage configuration
 type StorageConfig struct {
 	// Common fields for all storage types
-	BucketOrPath  string
-	EnableMetrics bool
-	MaxRetries    int
-	Timeout       time.Duration
+	BucketOrPath string
+	MaxRetries   int
+	Timeout      time.Duration
 
 	// S3-specific configuration
 	S3 S3Config
