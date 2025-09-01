@@ -31,6 +31,14 @@ else ifeq ($(ENVIRONMENT),production)
     DOCKER_COMPOSE_FILE := docker-compose.yml
 endif
 
+# Database Configuration
+DB_HOST ?= localhost
+DB_PORT ?= 5432
+DB_NAME ?= audit_reports_aggregator
+DB_USER ?= postgres
+DB_PASSWORD ?= postgres
+DB_URL ?= postgresql://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable
+
 # Docker Compose commands
 .PHONY: local-up
 local-up:
@@ -82,6 +90,18 @@ db-migrate:
 	@echo "Running database migrations..."
 	@docker run --rm -v $(PWD)/migrations:/migrations --network host migrate/migrate \
 		-path=/migrations/ -database "$(DB_URL)" up
+
+# Nuclear option: drop and recreate database then migrate
+.PHONY: db-reset
+db-reset:
+	@echo "Dropping and recreating database..."
+	@docker exec -it postgres psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$(DB_NAME)' AND pid <> pg_backend_pid();"
+	@docker exec -it postgres psql -U postgres -c "DROP DATABASE IF EXISTS $(DB_NAME);"
+	@docker exec -it postgres psql -U postgres -c "CREATE DATABASE $(DB_NAME);"
+	@echo "Running migrations on fresh database..."
+	@make db-migrate
+	@echo "Complete fresh start done!"
+
 
 # Clean commands
 .PHONY: clean
