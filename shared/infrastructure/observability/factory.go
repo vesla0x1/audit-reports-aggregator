@@ -1,63 +1,54 @@
-package infraobs
+package observability
 
 import (
 	"fmt"
 
-	"shared/config"
-	"shared/domain/observability"
-	cwAdapter "shared/infrastructure/observability/adapters/cloudwatch"
-	stdoutAdapter "shared/infrastructure/observability/adapters/stdout"
+	"shared/application/ports"
+	"shared/infrastructure/config"
+	"shared/infrastructure/observability/cloudwatch"
+	"shared/infrastructure/observability/stdout"
 )
 
-type Factory struct{}
-
-func NewFactory() observability.ObservabilityFactory {
-	return &Factory{}
-}
-
-func (f *Factory) Create(cfg *config.Config) (*observability.ObservabilityComponents, error) {
+func createObservability(cfg *config.Config) (ports.Logger, ports.Metrics, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("configuration is required")
+		return nil, nil, fmt.Errorf("configuration is required")
 	}
 
 	// Create logger based on adapter configuration
-	logger, err := f.createLogger(cfg)
+	logger, err := createLogger(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create logger: %w", err)
+		return nil, nil, fmt.Errorf("failed to create logger: %w", err)
 	}
 
 	// Create metrics based on adapter configuration
-	metrics, err := f.createMetrics(cfg)
+	metrics, err := createMetrics(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create metrics: %w", err)
+		return nil, nil, fmt.Errorf("failed to create metrics: %w", err)
 	}
 
-	return &observability.ObservabilityComponents{
-		Logger:  logger,
-		Metrics: metrics,
-	}, nil
+	return logger, metrics, nil
 }
 
-func (f *Factory) createLogger(cfg *config.Config) (observability.Logger, error) {
+func createLogger(cfg *config.Config) (ports.Logger, error) {
 	switch cfg.Adapters.Logger {
 	case "cloudwatch":
-		return cwAdapter.NewLogger(*cfg)
+		return cloudwatch.NewCloudwatchLogger(*cfg)
 
 	case "stdout":
-		return stdoutAdapter.NewLogger(), nil
+		return stdout.NewStdoutLogger()
 
 	default:
 		return nil, fmt.Errorf("unsupported logger adapter: %s", cfg.Adapters.Logger)
 	}
 }
 
-func (f *Factory) createMetrics(cfg *config.Config) (observability.Metrics, error) {
+func createMetrics(cfg *config.Config) (ports.Metrics, error) {
 	switch cfg.Adapters.Metrics {
 	case "cloudwatch":
-		return cwAdapter.NewMetrics(*cfg)
+		return cloudwatch.NewCloudwatchMetrics(*cfg)
 
 	case "stdout":
-		return stdoutAdapter.NewMetrics(), nil
+		return stdout.NewStdoutMetrics()
 
 	default:
 		return nil, fmt.Errorf("unsupported metrics adapter: %s", cfg.Adapters.Metrics)

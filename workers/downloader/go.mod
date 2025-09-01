@@ -4,10 +4,7 @@ go 1.24.3
 
 replace shared => ../../shared
 
-require (
-	github.com/stretchr/testify v1.10.0
-	shared v0.0.0-00010101000000-000000000000
-)
+require shared v0.0.0-00010101000000-000000000000
 
 require (
 	github.com/Masterminds/squirrel v1.5.4 // indirect
@@ -32,14 +29,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.34.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.0 // indirect
 	github.com/aws/smithy-go v1.23.0 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/jmoiron/sqlx v1.4.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/lib/pq v1.10.9 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/streadway/amqp v1.1.0 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

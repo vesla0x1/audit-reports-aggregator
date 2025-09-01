@@ -2,209 +2,126 @@ package main
 
 import (
 	"context"
-	"downloader/internal/domain"
-	"downloader/internal/infrastructure/adapters/http"
-	"downloader/internal/usecase"
+	"fmt"
 	"log"
-	"shared/config"
-	"shared/domain/database"
-	"shared/domain/handler"
-	"shared/domain/observability"
-	"shared/domain/repository"
-	"shared/domain/storage"
-	infradatabase "shared/infrastructure/database"
-	infrahandler "shared/infrastructure/handlers"
-	infraobs "shared/infrastructure/observability"
-	infrarepo "shared/infrastructure/repository"
-	infrastorage "shared/infrastructure/storage"
+	"shared/application/ports"
 	"time"
+
+	// Domain layer
+	"downloader/internal/usecase"
+
+	// Infrastructure layer
+	"shared/infrastructure/config"
+	"shared/infrastructure/database"
+	"shared/infrastructure/http"
+	"shared/infrastructure/observability"
+	"shared/infrastructure/repository"
+	"shared/infrastructure/runtime"
+	"shared/infrastructure/storage"
 )
 
 func main() {
 	cfg := loadConfiguration()
-
-	deps := initializeDependencies(cfg)
-
-	app := buildApplication(cfg, deps)
-
-	startApplication(app)
+	obs := initializeObservability(cfg)
+	deps := initializeDependencies(cfg, obs)
+	initializeApplication(cfg, deps, obs)
 }
 
 // Dependencies holds all initialized infrastructure components
 type Dependencies struct {
-	storage      storage.ObjectStorage
-	database     database.Database
-	httpClient   *http.Client
-	logger       observability.Logger
-	metrics      observability.Metrics
-	repositories *repository.Repositories
+	storage      ports.Storage
+	database     ports.Database
+	httpClient   ports.HTTPClient
+	repositories ports.Repositories
 }
 
-// Application holds the complete application stack
 type Application struct {
-	handler handler.Handler
-	logger  observability.Logger
-	metrics observability.Metrics
+	runtime ports.Runtime
 }
 
 // loadConfiguration loads and validates the application configuration
 func loadConfiguration() *config.Config {
-	config.MustLoad()
-	return config.MustGet()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("configuration: %v", err)
+	}
+	return cfg
 }
 
 // initializeDependencies sets up all infrastructure dependencies
-func initializeDependencies(cfg *config.Config) *Dependencies {
-	initializeObservability(cfg)
+func initializeDependencies(cfg *config.Config, obs ports.Observability) *Dependencies {
+	// Database initialization - component handles its own logging
+	db, err := database.CreateDB(cfg, obs)
+	if err != nil {
+		log.Fatalf("Failed to create database: %v", err)
+	}
 
-	logStartup(cfg)
+	// Test database connection
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := db.Ping(ctx); err != nil {
+		log.Fatalf("Failed to ping database: %v", err)
+	}
 
-	db := initializeDatabase(cfg)
-	storageClient := initializeStorage(cfg)
-	httpClient := createHTTPClient(cfg)
+	// Storage initialization - component handles its own logging
+	storageClient, err := storage.CreateStorage(cfg, obs)
+	if err != nil {
+		log.Fatalf("Failed to create storage: %v", err)
+	}
 
-	logger, metrics := observability.MustGetObservability("app")
-	logger.Info("Repositories initialized successfully")
+	// HTTP client - component handles its own logging
+	httpClient, err := http.CreateHTTPClient(cfg.HTTP, obs)
+	if err != nil {
+		log.Fatalf("Failed to create http client: %v", err)
+	}
 
-	// Create repositories
-	repositories := repository.NewRepositories(
-		infrarepo.NewAuditReportRepository(db),
-	)
+	// Repositories - component handles its own logging
+	repositories, err := repository.NewRepositories(db, obs)
+	if err != nil {
+		log.Fatalf("Failed to create http client: %v", err)
+	}
 
 	return &Dependencies{
 		storage:      storageClient,
 		database:     db,
 		httpClient:   httpClient,
 		repositories: repositories,
-		logger:       logger,
-		metrics:      metrics,
 	}
 }
 
 // initializeObservability sets up logging and metrics infrastructure
-func initializeObservability(cfg *config.Config) {
-	if err := observability.Initialize(cfg, &infraobs.Factory{}); err != nil {
+func initializeObservability(cfg *config.Config) ports.Observability {
+	obs, err := observability.CreateObservability(cfg)
+	if err != nil {
 		log.Fatalf("Failed to initialize observability: %v", err)
 	}
-}
-
-// logStartup logs application startup information
-func logStartup(cfg *config.Config) {
-	logger, metrics := observability.MustGetObservability("main")
-
-	logger.Info("Starting application",
-		"service", cfg.ServiceName,
-		"version", cfg.Version,
-		"environment", cfg.Environment)
-
-	metrics.IncrementCounter("application.starts", nil)
-}
-
-// initializeDatabase sets up the database connection
-func initializeDatabase(cfg *config.Config) database.Database {
-	logger, metrics := observability.MustGetObservability("database")
-	logger.Info("Initializing database", "adapter", cfg.Adapters.Database)
-
-	factory := infradatabase.NewFactory(logger, metrics)
-	if err := database.Initialize(cfg, factory); err != nil {
-		logger.Error("Failed to initialize database", "error", err)
-		metrics.IncrementCounter("init.failures", map[string]string{"component": "database"})
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-
-	// Test connection
-	db := database.MustGetDatabase()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := db.Ping(ctx); err != nil {
-		logger.Error("Database ping failed", "error", err)
-		log.Fatalf("Failed to ping database: %v", err)
-	}
-
-	logger.Info("Database initialized successfully")
-	metrics.IncrementCounter("init.success", map[string]string{"component": "database"})
-
-	return db
-}
-
-// initializeStorage sets up the storage provider with observability
-func initializeStorage(cfg *config.Config) storage.ObjectStorage {
-	logger, metrics := observability.MustGetObservability("storage.s3")
-	logger.Info("calling storage creation")
-
-	factory := infrastorage.NewFactory(logger, metrics)
-	if err := storage.Initialize(cfg, factory); err != nil {
-		logger.Error("Failed to initialize storage", "error", err)
-		metrics.IncrementCounter("init.failures", nil)
-		log.Fatalf("Failed to initialize storage: %v", err)
-	}
-
-	logger.Info("Storage initialized successfully")
-	metrics.IncrementCounter("init.success", nil)
-
-	return storage.MustGetStorage()
-}
-
-// createHTTPClient creates an HTTP client with observability
-func createHTTPClient(cfg *config.Config) *http.Client {
-	logger, metrics := observability.MustGetObservability("client.http")
-
-	return http.NewClientWithConfig(cfg.HTTP).
-		WithLogger(logger).
-		WithMetrics(metrics)
+	return obs
 }
 
 // buildApplication assembles the application layers
-func buildApplication(cfg *config.Config, deps *Dependencies) *Application {
-	useCase := createUseCase(deps)
-
-	initializeHandler(useCase, cfg)
-
-	logger, metrics := observability.MustGetObservability("handler.download")
-
-	return &Application{
-		handler: handler.MustGetHandler(),
-		logger:  logger,
-		metrics: metrics,
-	}
-}
-
-// createUseCase builds the business logic layer
-func createUseCase(deps *Dependencies) handler.UseCase {
-	downloadService := domain.NewDownloadService(deps.httpClient)
-
-	logger, metrics := observability.MustGetObservability("usecase.download")
-
-	return usecase.NewDownloaderWorker(
-		downloadService,
+func buildApplication(cfg *config.Config, deps *Dependencies, obs ports.Observability) (ports.Runtime, error) {
+	// Create use case
+	//downloadService := domain.NewDownloadService(deps.httpClient)
+	handler := usecase.NewDownloaderWorker(
+		//downloadService,
 		deps.storage,
 		deps.repositories,
-		logger,
-		metrics,
+		obs,
 	)
+
+	// Create runtime
+	runtime, err := runtime.Create(cfg, handler, obs)
+	if err != nil {
+		return nil, fmt.Errorf("runtime creation: %w", err)
+	}
+
+	return runtime, nil
 }
 
-// initializeHandler sets up the request handler
-func initializeHandler(useCase handler.UseCase, cfg *config.Config) {
-	logger, metrics := observability.MustGetObservability("handler.download")
-
-	factory := infrahandler.NewFactory(logger, metrics)
-	if err := handler.Initialize(useCase, cfg, factory); err != nil {
-		logger.Error("Failed to initialize handler", "error", err)
-		metrics.IncrementCounter("init.failures", nil)
-		log.Fatalf("Failed to initialize handler: %v", err)
+func initializeApplication(cfg *config.Config, deps *Dependencies, obs ports.Observability) {
+	app, err := buildApplication(cfg, deps, obs)
+	if err != nil {
+		log.Fatalf("error building the application: %w", err)
 	}
-}
-
-// startApplication starts the application and begins processing
-func startApplication(app *Application) {
-	app.logger.Info("Starting handler")
-	app.metrics.IncrementCounter("handler.starts", nil)
-
-	if err := handler.Start(); err != nil {
-		app.logger.Error("Failed to start handler", "error", err)
-		app.metrics.IncrementCounter("start.failures", nil)
-		log.Fatalf("Failed to start: %v", err)
-	}
+	app.Start()
 }
