@@ -21,7 +21,7 @@ func DefaultConfig() *Config {
 		Storage:       DefaultStorageConfig(),
 		Database:      DefaultDatabaseConfig(),
 		Observability: DefaultObservabilityConfig(),
-		RabbitMQ:      DefaultRabbitMQConfig(),
+		Queue:         DefaultQueueConfig(),
 	}
 }
 
@@ -94,13 +94,34 @@ func DefaultObservabilityConfig() ObservabilityConfig {
 	}
 }
 
-// DefaultRabbitMQConfig returns sensible defaults for RabbitMQ configuration
+// DefaultQueueConfig returns sensible defaults for queue configuration
+func DefaultQueueConfig() QueueConfig {
+	return QueueConfig{
+		Queues: QueueNames{
+			Downloader:   "downloader",
+			Processor:    "processor",
+			Extractor:    "extractor",
+			DeadLetter:   "dlq",
+			Orchestrator: "orchestrator",
+		},
+		RabbitMQ: DefaultRabbitMQConfig(),
+		SQS:      DefaultSQSConfig(),
+	}
+}
+
+// DefaultRabbitMQConfig returns sensible defaults for RabbitMQ
 func DefaultRabbitMQConfig() RabbitMQConfig {
 	return RabbitMQConfig{
 		URL:           "amqp://guest:guest@localhost:5672/",
-		Queue:         "default-queue",
-		PrefetchCount: 10,
 		Timeout:       30 * time.Second,
+		PrefetchCount: 10,
+	}
+}
+
+// DefaultSQSConfig returns sensible defaults for SQS
+func DefaultSQSConfig() SQSConfig {
+	return SQSConfig{
+		Region: "us-east-2",
 	}
 }
 
@@ -109,7 +130,7 @@ func applyDefaults(cfg *Config) {
 	// Set adapter defaults based on environment
 	if cfg.IsLocal() {
 		if cfg.Adapters.Runtime == "" {
-			cfg.Adapters.Runtime = "http"
+			cfg.Adapters.Runtime = "rabbitmq"
 		}
 		if cfg.Adapters.Storage == "" {
 			cfg.Adapters.Storage = "filesystem"
@@ -124,7 +145,7 @@ func applyDefaults(cfg *Config) {
 			cfg.Adapters.Metrics = "stdout"
 		}
 		if cfg.Storage.BucketOrPath == "" {
-			cfg.Storage.BucketOrPath = "/tmp/storage"
+			cfg.Storage.BucketOrPath = "audit-reports-local"
 		}
 	} else if cfg.IsProduction() {
 		if cfg.Adapters.Runtime == "" {
@@ -141,6 +162,9 @@ func applyDefaults(cfg *Config) {
 		}
 		if cfg.Adapters.Metrics == "" {
 			cfg.Adapters.Metrics = "cloudwatch"
+		}
+		if cfg.Adapters.Queue == "" {
+			cfg.Adapters.Queue = "sqs"
 		}
 	}
 

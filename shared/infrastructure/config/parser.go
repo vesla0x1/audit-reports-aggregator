@@ -66,12 +66,26 @@ func parse() (*Config, error) {
 			CloudWatchNamespace: getEnv("CLOUDWATCH_NAMESPACE", ""),
 		},
 
-		// RabbitMQ Configuration
-		RabbitMQ: RabbitMQConfig{
-			URL:           getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-			Queue:         getEnv("RABBITMQ_QUEUE", "default-queue"),
-			PrefetchCount: getInt("RABBITMQ_PREFETCH_COUNT", 10),
-			Timeout:       getDuration("RABBITMQ_TIMEOUT", "30s"),
+		Queue: QueueConfig{
+			Queues: QueueNames{
+				Downloader:   getEnv("QUEUE_DOWNLOADER", "downloader"),
+				Processor:    getEnv("QUEUE_PROCESSOR", "processor"),
+				Extractor:    getEnv("QUEUE_EXTRACTOR", "extractor"),
+				DeadLetter:   getEnv("QUEUE_DEAD_LETTER", "dlq"),
+				Orchestrator: getEnv("QUEUE_ORCHESTRATOR", "orchestrator"),
+			},
+
+			RuntimeQueueName: getEnv("QUEUE_RUNTIME_NAME", ""),
+
+			RabbitMQ: RabbitMQConfig{
+				URL:           getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+				PrefetchCount: getInt("RABBITMQ_PREFETCH_COUNT", 10),
+				Timeout:       getDuration("RABBITMQ_TIMEOUT", "30s"),
+			},
+
+			SQS: SQSConfig{
+				Region: getEnv("SQS_REGION", getEnv("AWS_REGION", "us-east-2")),
+			},
 		},
 	}
 

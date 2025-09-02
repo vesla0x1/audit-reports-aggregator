@@ -21,7 +21,7 @@ type Config struct {
 	Storage       StorageConfig
 	Database      DatabaseConfig
 	Observability ObservabilityConfig
-	RabbitMQ      RabbitMQConfig
+	Queue         QueueConfig
 }
 
 // AdapterConfig specifies which implementations to use
@@ -31,6 +31,7 @@ type AdapterConfig struct {
 	Database string // "postgres"
 	Logger   string // "cloudwatch", "stdout"
 	Metrics  string // "cloudwatch", "stdout"
+	Queue    string // "rabbitmq", "sqs" - for publishing
 }
 
 // DatabaseConfig holds database configuration
@@ -85,10 +86,33 @@ type ObservabilityConfig struct {
 	CloudWatchNamespace string
 }
 
-// RabbitMQConfig holds RabbitMQ configuration
+// QueueConfig holds minimal queue configuration
+type QueueConfig struct {
+	Queues           QueueNames
+	RuntimeQueueName string
+
+	// Connection settings based on adapter
+	RabbitMQ RabbitMQConfig
+	SQS      SQSConfig
+}
+
+// QueueNames defines all queue names in the system
+type QueueNames struct {
+	Downloader   string // Queue for download tasks
+	Processor    string // Queue for processing tasks
+	Extractor    string // Queue for extraction tasks
+	DeadLetter   string // Dead letter queue for failed messages
+	Orchestrator string // Queue for orchestration tasks
+}
+
+// RabbitMQConfig - minimal config
 type RabbitMQConfig struct {
-	URL           string
-	Queue         string
-	PrefetchCount int
+	URL           string // Connection URL
 	Timeout       time.Duration
+	PrefetchCount int
+}
+
+// SQSConfig - minimal config
+type SQSConfig struct {
+	Region string // AWS Region
 }

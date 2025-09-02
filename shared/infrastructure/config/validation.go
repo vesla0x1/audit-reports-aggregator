@@ -19,20 +19,9 @@ func (c *Config) Validate() error {
 		errors = append(errors, err.Error())
 	}
 
-	// Validate component configs based on selected adapters
-	switch c.Adapters.Runtime {
-	case "http":
-		if err := c.HTTP.Validate(); err != nil {
-			errors = append(errors, err.Error())
-		}
-	case "lambda":
-		if err := c.Lambda.Validate(); err != nil {
-			errors = append(errors, err.Error())
-		}
-	case "rabbitmq":
-		if err := c.RabbitMQ.Validate(); err != nil {
-			errors = append(errors, err.Error())
-		}
+	// Validate runtime configuration
+	if err := c.validateRuntime(); err != nil {
+		errors = append(errors, err.Error())
 	}
 
 	// Validate storage
@@ -58,6 +47,11 @@ func (c *Config) Validate() error {
 		if err := c.Database.Validate(); err != nil {
 			errors = append(errors, err.Error())
 		}
+	}
+
+	// Validate queue if configured
+	if err := c.Queue.Validate(c.Adapters); err != nil {
+		errors = append(errors, err.Error())
 	}
 
 	if len(errors) > 0 {
@@ -114,19 +108,22 @@ func (l *LambdaConfig) Validate() error {
 	return nil
 }
 
-// Validate validates RabbitMQ configuration
-func (r *RabbitMQConfig) Validate() error {
-	if r.URL == "" {
-		return fmt.Errorf("RABBITMQ_URL is required for RabbitMQ adapter")
+func (q *QueueConfig) Validate(adapters AdapterConfig) error {
+	// Only validate if queue adapter is configured
+	if adapters.Queue == "" {
+		return nil
 	}
-	if r.Queue == "" {
-		return fmt.Errorf("RABBITMQ_QUEUE is required for RabbitMQ adapter")
-	}
-	if r.PrefetchCount < 0 {
-		return fmt.Errorf("RABBITMQ_PREFETCH_COUNT cannot be negative")
-	}
-	if r.Timeout <= 0 {
-		return fmt.Errorf("RABBITMQ_TIMEOUT must be positive")
+
+	// Validate adapter-specific settings
+	switch adapters.Queue {
+	case "rabbitmq":
+		if q.RabbitMQ.URL == "" {
+			return fmt.Errorf("RABBITMQ_URL is required for RabbitMQ")
+		}
+	case "sqs":
+		if q.SQS.Region == "" {
+			return fmt.Errorf("SQS_REGION is required for SQS")
+		}
 	}
 	return nil
 }
@@ -222,4 +219,28 @@ func (d *DatabaseConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// validateRuntime validates runtime-specific configuration
+func (c *Config) validateRuntime() error {
+	switch c.Adapters.Runtime {
+	case "http":
+		return c.HTTP.Validate()
+
+	case "lambda":
+		return c.Lambda.Validate()
+
+	case "rabbitmq":
+		// RabbitMQ runtime needs URL and appropriate queue name
+		if c.Queue.RabbitMQ.URL == "" {
+			return fmt.Errorf("RABBITMQ_URL is required for RabbitMQ runtime")
+		}
+		if c.Queue.RuntimeQueueName == "" {
+			return fmt.Errorf("appropriate queue name not configured for service: %s", c.ServiceName)
+		}
+		return nil
+
+	default:
+		return nil
+	}
 }

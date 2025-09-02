@@ -17,13 +17,13 @@ type rabbitmqRuntime struct {
 	handler ports.Handler
 	logger  ports.Logger
 	metrics ports.Metrics
-	config  *config.RabbitMQConfig
+	config  *config.QueueConfig
 	conn    *amqp.Connection
 	channel *amqp.Channel
 }
 
 // NewRabbitMQRuntime creates a new RabbitMQ runtime
-func NewRabbitMQRuntime(cfg *config.RabbitMQConfig, handler ports.Handler, obs ports.Observability) ports.Runtime {
+func NewRabbitMQRuntime(cfg *config.QueueConfig, handler ports.Handler, obs ports.Observability) ports.Runtime {
 	logger, metrics, err := obs.ComponentsScoped("runtime.rabbitmq")
 	if err != nil {
 		panic(fmt.Errorf("failed to create runtime: Observability was not initialized %w", err))
@@ -44,7 +44,7 @@ func NewRabbitMQRuntime(cfg *config.RabbitMQConfig, handler ports.Handler, obs p
 // Start begins consuming messages from RabbitMQ
 func (runtime *rabbitmqRuntime) Start() error {
 	// Connect
-	conn, err := amqp.Dial(runtime.config.URL)
+	conn, err := amqp.Dial(runtime.config.RabbitMQ.URL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to RabbitMQ: %w", err)
 	}
@@ -59,8 +59,8 @@ func (runtime *rabbitmqRuntime) Start() error {
 	runtime.channel = ch
 
 	// Set QoS
-	if runtime.config.PrefetchCount > 0 {
-		if err := ch.Qos(runtime.config.PrefetchCount, 0, false); err != nil {
+	if runtime.config.RabbitMQ.PrefetchCount > 0 {
+		if err := ch.Qos(runtime.config.RabbitMQ.PrefetchCount, 0, false); err != nil {
 			ch.Close()
 			conn.Close()
 			return fmt.Errorf("failed to set QoS: %w", err)
@@ -69,12 +69,12 @@ func (runtime *rabbitmqRuntime) Start() error {
 
 	// Declare queue (idempotent - creates if doesn't exist)
 	q, err := ch.QueueDeclare(
-		runtime.config.Queue, // name
-		true,                 // durable
-		false,                // delete when unused
-		false,                // exclusive
-		false,                // no-wait
-		nil,                  // arguments
+		runtime.config.RuntimeQueueName, // name
+		true,                            // durable
+		false,                           // delete when unused
+		false,                           // exclusive
+		false,                           // no-wait
+		nil,                             // arguments
 	)
 	if err != nil {
 		ch.Close()
@@ -99,8 +99,8 @@ func (runtime *rabbitmqRuntime) Start() error {
 	}
 
 	runtime.logger.Info("RabbitMQ consumer started",
-		"queue", runtime.config.Queue,
-		"prefetch", runtime.config.PrefetchCount)
+		"queue", runtime.config.RuntimeQueueName,
+		"prefetch", runtime.config.RabbitMQ.PrefetchCount)
 	runtime.metrics.IncrementCounter("rabbitmq.starts", nil)
 
 	// Process messages
@@ -117,9 +117,9 @@ func (runtime *rabbitmqRuntime) processMessage(msg amqp.Delivery) {
 
 	// Create context with timeout
 	ctx := context.Background()
-	if runtime.config.Timeout > 0 {
+	if runtime.config.RabbitMQ.Timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, runtime.config.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, runtime.config.RabbitMQ.Timeout)
 		defer cancel()
 	}
 

@@ -15,7 +15,7 @@ func Create(cfg *config.Config, handler ports.Handler, obs ports.Observability) 
 	case "http":
 		return NewHTTPRuntime(&cfg.HTTP, handler, obs), nil
 	case "rabbitmq":
-		return NewRabbitMQRuntime(&cfg.RabbitMQ, handler, obs), nil
+		return NewRabbitMQRuntime(&cfg.Queue, handler, obs), nil
 	default:
 		return nil, fmt.Errorf("unsupported handler adapter: %s", cfg.Adapters.Runtime)
 	}
