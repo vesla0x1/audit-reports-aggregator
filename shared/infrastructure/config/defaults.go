@@ -33,6 +33,7 @@ func DefaultAdapterConfig() AdapterConfig {
 		Database: "postgres",
 		Logger:   "stdout",
 		Metrics:  "stdout",
+		Queue:    "rabbitmq",
 	}
 }
 

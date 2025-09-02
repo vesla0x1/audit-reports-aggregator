@@ -16,6 +16,7 @@ func parse() (*Config, error) {
 			Database: getEnv("ADAPTER_DATABASE", ""),
 			Logger:   getEnv("ADAPTER_LOGGER", ""),
 			Metrics:  getEnv("ADAPTER_METRICS", ""),
+			Queue:    getEnv("ADAPTER_QUEUE", ""),
 		},
 
 		// Database Configuration
