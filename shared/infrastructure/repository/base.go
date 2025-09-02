@@ -28,12 +28,12 @@ func newBaseRepository[T any](db ports.Database, logger ports.Logger, metrics po
 }
 
 // Create inserts a new entity - using sqlx NamedExec for simplicity
-func (r *baseRepository[T]) Create(ctx context.Context, entity T) error {
+func (r *baseRepository[T]) Create(ctx context.Context, entity *T) error {
 	panic("Create must be implemented by concrete repository")
 }
 
 // Get retrieves an entity by ID - using sqlx for auto-scanning
-func (r *baseRepository[T]) Get(ctx context.Context, id string) (T, error) {
+func (r *baseRepository[T]) Get(ctx context.Context, id int64) (*T, error) {
 	var entity T
 
 	r.logger.Info("Getting entity", "table", r.table, "id", id)
@@ -47,30 +47,30 @@ func (r *baseRepository[T]) Get(ctx context.Context, id string) (T, error) {
 
 	sqlQuery, args, err := query.ToSql()
 	if err != nil {
-		return entity, fmt.Errorf("build query: %w", err)
+		return nil, fmt.Errorf("build query: %w", err)
 	}
 
 	// Execute and scan with sqlx
 	err = r.db.Get(ctx, &entity, sqlQuery, args...)
 	if err == sql.ErrNoRows {
-		return entity, fmt.Errorf("entity not found")
+		return nil, fmt.Errorf("entity not found")
 	}
 	if err != nil {
 		r.logger.Error("Failed to get entity", "error", err)
 		r.metrics.IncrementCounter(fmt.Sprintf("repository.%s.errors", r.table), nil)
-		return entity, fmt.Errorf("get entity: %w", err)
+		return nil, fmt.Errorf("get entity: %w", err)
 	}
 
-	return entity, nil
+	return &entity, nil
 }
 
 // Update modifies an entity - using Squirrel for dynamic updates
-func (r *baseRepository[T]) Update(ctx context.Context, id string, entity T) error {
+func (r *baseRepository[T]) Update(ctx context.Context, entity *T) error {
 	panic("Update must be implemented by concrete repository")
 }
 
 // Delete removes an entity - simple enough for plain sqlx
-func (r *baseRepository[T]) Delete(ctx context.Context, id string) error {
+func (r *baseRepository[T]) Delete(ctx context.Context, id int64) error {
 	r.logger.Info("Deleting entity", "table", r.table, "id", id)
 	r.metrics.IncrementCounter(fmt.Sprintf("repository.%s.delete", r.table), nil)
 
@@ -100,7 +100,7 @@ func (r *baseRepository[T]) Delete(ctx context.Context, id string) error {
 }
 
 // List retrieves multiple entities - using Squirrel for flexible filtering
-func (r *baseRepository[T]) ListAll(ctx context.Context) ([]T, error) {
+func (r *baseRepository[T]) ListAll(ctx context.Context) ([]*T, error) {
 	r.logger.Info("Listing entities", "table", r.table)
 	r.metrics.IncrementCounter(fmt.Sprintf("repository.%s.list", r.table), nil)
 
@@ -122,7 +122,12 @@ func (r *baseRepository[T]) ListAll(ctx context.Context) ([]T, error) {
 		return nil, fmt.Errorf("list entities: %w", err)
 	}
 
-	return entities, nil
+	result := make([]*T, len(entities))
+	for i := range entities {
+		result[i] = &entities[i]
+	}
+
+	return result, nil
 }
 
 // Count returns the number of entities - Squirrel for conditional counting

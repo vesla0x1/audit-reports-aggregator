@@ -8,6 +8,7 @@ import (
 	"time"
 
 	// Domain layer
+	"downloader/internal/domain/service"
 	"downloader/internal/usecase"
 
 	// Infrastructure layer
@@ -33,10 +34,6 @@ type Dependencies struct {
 	database     ports.Database
 	httpClient   ports.HTTPClient
 	repositories ports.Repositories
-}
-
-type Application struct {
-	runtime ports.Runtime
 }
 
 // loadConfiguration loads and validates the application configuration
@@ -101,9 +98,9 @@ func initializeObservability(cfg *config.Config) ports.Observability {
 // buildApplication assembles the application layers
 func buildApplication(cfg *config.Config, deps *Dependencies, obs ports.Observability) (ports.Runtime, error) {
 	// Create use case
-	//downloadService := domain.NewDownloadService(deps.httpClient)
 	handler := usecase.NewDownloaderWorker(
-		//downloadService,
+		service.NewDownloadService(deps.httpClient),
+		service.NewStoragePathService(),
 		deps.storage,
 		deps.repositories,
 		obs,
