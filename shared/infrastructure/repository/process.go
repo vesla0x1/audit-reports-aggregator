@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"shared/domain/entity"
 
 	"github.com/Masterminds/squirrel"
@@ -14,11 +15,16 @@ type processRepository struct {
 func (r *processRepository) Create(ctx context.Context, process *entity.Process) error {
 	query := r.qb.Insert("processes").
 		Columns("download_id", "status", "attempt_count", "created_at", "updated_at").
-		Values(process.DownloadID, process.Status, process.AttemptCount, process.CreatedAt, process.UpdatedAt)
+		Values(process.DownloadID, process.Status, process.AttemptCount, process.CreatedAt, process.UpdatedAt).
+		Suffix("RETURNING id")
 
 	sql, args, _ := query.ToSql()
-	_, err := r.db.Execute(ctx, sql, args...)
-	return err
+	row := r.db.QueryRow(ctx, sql, args...)
+	err := row.Scan(&process.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create process: %w", err)
+	}
+	return nil
 }
 
 func (r *processRepository) Update(ctx context.Context, process *entity.Process) error {

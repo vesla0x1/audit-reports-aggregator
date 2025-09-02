@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"shared/domain/entity"
 
 	"github.com/Masterminds/squirrel"
@@ -20,11 +21,16 @@ func (r *auditProviderRepository) Create(ctx context.Context, provider *entity.A
 		Values(
 			provider.Name, provider.Slug, provider.WebsiteURL, provider.Description,
 			provider.ProviderType, provider.IsActive, provider.CreatedAt, provider.UpdatedAt,
-		)
+		).
+		Suffix("RETURNING id")
 
 	sql, args, _ := query.ToSql()
-	_, err := r.db.Execute(ctx, sql, args...)
-	return err
+	row := r.db.QueryRow(ctx, sql, args...)
+	err := row.Scan(&provider.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create provider: %w", err)
+	}
+	return nil
 }
 
 func (r *auditProviderRepository) Update(ctx context.Context, provider *entity.AuditProvider) error {

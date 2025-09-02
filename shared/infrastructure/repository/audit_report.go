@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"shared/domain/entity"
 
 	"github.com/Masterminds/squirrel"
@@ -24,11 +25,16 @@ func (r *auditReportRepository) Create(ctx context.Context, report *entity.Audit
 			report.ClientCompany, report.AuditStartDate, report.AuditEndDate,
 			report.DetailsPageURL, report.SourceDownloadURL, report.RepositoryURL,
 			report.Summary, report.FindingsSummary, report.CreatedAt, report.UpdatedAt,
-		)
+		).
+		Suffix("RETURNING id")
 
 	sql, args, _ := query.ToSql()
-	_, err := r.db.Execute(ctx, sql, args...)
-	return err
+	row := r.db.QueryRow(ctx, sql, args...)
+	err := row.Scan(&report.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create report: %w", err)
+	}
+	return nil
 }
 
 func (r *auditReportRepository) Update(ctx context.Context, report *entity.AuditReport) error {

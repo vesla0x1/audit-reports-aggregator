@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"shared/domain/entity"
 
 	"github.com/Masterminds/squirrel"
@@ -14,11 +15,16 @@ type downloadRepository struct {
 func (r *downloadRepository) Create(ctx context.Context, download *entity.Download) error {
 	query := r.qb.Insert("downloads").
 		Columns("report_id", "status", "attempt_count", "created_at", "updated_at").
-		Values(download.ReportID, download.Status, download.AttemptCount, download.CreatedAt, download.UpdatedAt)
+		Values(download.ReportID, download.Status, download.AttemptCount, download.CreatedAt, download.UpdatedAt).
+		Suffix("RETURNING id")
 
 	sql, args, _ := query.ToSql()
-	_, err := r.db.Execute(ctx, sql, args...)
-	return err
+	row := r.db.QueryRow(ctx, sql, args...)
+	err := row.Scan(&download.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create download: %w", err)
+	}
+	return nil
 }
 
 func (r *downloadRepository) Update(ctx context.Context, download *entity.Download) error {
