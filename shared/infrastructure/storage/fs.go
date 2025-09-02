@@ -20,12 +20,13 @@ type Storage struct {
 }
 
 // NewStorage creates a new filesystem-based object storage
-func NewFSStorage(basePath string, obs ports.Observability) (ports.Storage, error) {
+func NewFSStorage(obs ports.Observability) (ports.Storage, error) {
 	logger, metrics, err := obs.ComponentsScoped("storage.fs")
 	if err != nil {
 		logger.Error("Failed to create fs storage", err)
 		panic(fmt.Errorf("failed to create storage: Observability was not initialized %w", err))
 	}
+	basePath := "/tmp/storage"
 	// Create base directory if it doesn't exist
 	if err := os.MkdirAll(basePath, 0755); err != nil {
 		logger.Error("Failed to create base path", "path", basePath, "error", err)

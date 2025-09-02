@@ -57,7 +57,7 @@ func DefaultLambdaConfig() LambdaConfig {
 // DefaultStorageConfig returns sensible defaults for storage configuration
 func DefaultStorageConfig() StorageConfig {
 	return StorageConfig{
-		BucketOrPath: "/tmp/storage",
+		BucketOrPath: "audit-reports-local",
 		MaxRetries:   3,
 		Timeout:      30 * time.Second,
 		S3:           DefaultS3Config(),
@@ -149,7 +149,7 @@ func applyDefaults(cfg *Config) {
 		if cfg.Adapters.Storage == "s3" {
 			cfg.Storage.BucketOrPath = fmt.Sprintf("%s-storage", cfg.ServiceName)
 		} else {
-			cfg.Storage.BucketOrPath = "/tmp/storage"
+			cfg.Storage.BucketOrPath = "audit-reports-local"
 		}
 	}
 }

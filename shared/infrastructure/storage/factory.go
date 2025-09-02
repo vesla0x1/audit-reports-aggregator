@@ -22,7 +22,7 @@ func CreateStorage(cfg *config.Config, obs ports.Observability) (ports.Storage, 
 	case "filesystem":
 		logger.Info("Creating filesystem storage adapter",
 			"path", cfg.Storage.BucketOrPath)
-		return NewFSStorage(cfg.Storage.BucketOrPath, obs)
+		return NewFSStorage(obs)
 
 	default:
 		return nil, fmt.Errorf("unsupported storage adapter: %s", cfg.Adapters.Storage)

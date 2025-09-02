@@ -11,7 +11,7 @@ func parse() (*Config, error) {
 
 		// Adapter selection
 		Adapters: AdapterConfig{
-			Runtime:  getEnv("ADAPTER_HANDLER", ""),
+			Runtime:  getEnv("ADAPTER_RUNTIME", ""),
 			Storage:  getEnv("ADAPTER_STORAGE", ""),
 			Database: getEnv("ADAPTER_DATABASE", ""),
 			Logger:   getEnv("ADAPTER_LOGGER", ""),
