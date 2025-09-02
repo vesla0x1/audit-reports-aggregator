@@ -187,11 +187,51 @@ resource "aws_sqs_queue" "downloader" {
   }
 }
 
+# SQS Queue for processor worker
+resource "aws_sqs_queue" "processor" {
+  name                       = "${var.project_name}-${var.environment}-processor"
+  visibility_timeout_seconds = var.sqs_visibility_timeout
+  message_retention_seconds  = var.sqs_message_retention
+  max_message_size          = 262144  # 256 KB
+  receive_wait_time_seconds = 20      # Long polling
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.dlq.arn
+    maxReceiveCount     = var.max_receive_count
+  })
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-processor"
+    Environment = var.environment
+    Worker      = "processor"
+  }
+}
+
+# SQS Queue for extractor worker
+resource "aws_sqs_queue" "extractor" {
+  name                       = "${var.project_name}-${var.environment}-extractor"
+  visibility_timeout_seconds = var.sqs_visibility_timeout
+  message_retention_seconds  = var.sqs_message_retention
+  max_message_size          = 262144  # 256 KB
+  receive_wait_time_seconds = 20      # Long polling
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.dlq.arn
+    maxReceiveCount     = var.max_receive_count
+  })
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-extractor"
+    Environment = var.environment
+    Worker      = "extractor"
+  }
+}
+
 # ==================== IAM Roles and Policies ====================
 
-# IAM Role for Lambda execution
+# Shared Lambda execution role
 resource "aws_iam_role" "lambda_execution" {
-  name = "${var.project_name}-${var.environment}-lambda-downloader"
+  name = "${var.project_name}-${var.environment}-lambda-execution"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -207,12 +247,12 @@ resource "aws_iam_role" "lambda_execution" {
   })
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-lambda-downloader"
+    Name        = "${var.project_name}-${var.environment}-lambda-execution"
     Environment = var.environment
   }
 }
 
-# IAM Policy for Lambda execution
+# Policy for Downloader Lambda
 resource "aws_iam_policy" "lambda_downloader" {
   name        = "${var.project_name}-${var.environment}-lambda-downloader-policy"
   description = "Policy for Lambda downloader worker"
@@ -220,7 +260,6 @@ resource "aws_iam_policy" "lambda_downloader" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      # CloudWatch Logs permissions
       {
         Sid    = "CloudWatchLogs"
         Effect = "Allow"
@@ -231,9 +270,8 @@ resource "aws_iam_policy" "lambda_downloader" {
         ]
         Resource = "arn:aws:logs:${var.aws_region}:*:*"
       },
-      # SQS permissions
       {
-        Sid    = "SQSOperations"
+        Sid    = "SQSConsume"
         Effect = "Allow"
         Action = [
           "sqs:ReceiveMessage",
@@ -243,16 +281,17 @@ resource "aws_iam_policy" "lambda_downloader" {
         ]
         Resource = aws_sqs_queue.downloader.arn
       },
-      # DLQ permissions
       {
-        Sid    = "DLQOperations"
+        Sid    = "SQSPublish"
         Effect = "Allow"
         Action = [
           "sqs:SendMessage"
         ]
-        Resource = aws_sqs_queue.dlq.arn
+        Resource = [
+          aws_sqs_queue.processor.arn,
+          aws_sqs_queue.dlq.arn
+        ]
       },
-      # S3 permissions
       {
         Sid    = "S3Operations"
         Effect = "Allow"
@@ -271,7 +310,6 @@ resource "aws_iam_policy" "lambda_downloader" {
         ]
         Resource = aws_s3_bucket.reports.arn
       },
-      # CloudWatch Metrics permissions
       {
         Sid    = "CloudWatchMetrics"
         Effect = "Allow"
@@ -284,10 +322,155 @@ resource "aws_iam_policy" "lambda_downloader" {
   })
 }
 
-# Attach policy to role
+# Policy for Processor Lambda
+resource "aws_iam_policy" "lambda_processor" {
+  name        = "${var.project_name}-${var.environment}-lambda-processor-policy"
+  description = "Policy for Lambda processor worker"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CloudWatchLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${var.aws_region}:*:*"
+      },
+      {
+        Sid    = "SQSConsume"
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:ChangeMessageVisibility"
+        ]
+        Resource = aws_sqs_queue.processor.arn
+      },
+      {
+        Sid    = "SQSPublish"
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage"
+        ]
+        Resource = [
+          aws_sqs_queue.extractor.arn,
+          aws_sqs_queue.dlq.arn
+        ]
+      },
+      {
+        Sid    = "S3Operations"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = "${aws_s3_bucket.reports.arn}/*"
+      },
+      {
+        Sid    = "S3ListBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = aws_s3_bucket.reports.arn
+      },
+      {
+        Sid    = "CloudWatchMetrics"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Policy for Extractor Lambda
+resource "aws_iam_policy" "lambda_extractor" {
+  name        = "${var.project_name}-${var.environment}-lambda-extractor-policy"
+  description = "Policy for Lambda extractor worker"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CloudWatchLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${var.aws_region}:*:*"
+      },
+      {
+        Sid    = "SQSConsume"
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:ChangeMessageVisibility"
+        ]
+        Resource = aws_sqs_queue.extractor.arn
+      },
+      {
+        Sid    = "SQSPublish"
+        Effect = "Allow"
+        Action = [
+          "sqs:SendMessage"
+        ]
+        Resource = aws_sqs_queue.dlq.arn
+      },
+      {
+        Sid    = "S3Operations"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = "${aws_s3_bucket.reports.arn}/*"
+      },
+      {
+        Sid    = "S3ListBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = aws_s3_bucket.reports.arn
+      },
+      {
+        Sid    = "CloudWatchMetrics"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# Attach policies to role
 resource "aws_iam_role_policy_attachment" "lambda_downloader" {
   role       = aws_iam_role.lambda_execution.name
   policy_arn = aws_iam_policy.lambda_downloader.arn
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_processor" {
+  role       = aws_iam_role.lambda_execution.name
+  policy_arn = aws_iam_policy.lambda_processor.arn
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_extractor" {
+  role       = aws_iam_role.lambda_execution.name
+  policy_arn = aws_iam_policy.lambda_extractor.arn
 }
 
 # ==================== CloudWatch ====================
@@ -301,6 +484,28 @@ resource "aws_cloudwatch_log_group" "downloader" {
     Name        = "/aws/lambda/${var.project_name}-${var.environment}-downloader"
     Environment = var.environment
     Worker      = "downloader"
+  }
+}
+
+resource "aws_cloudwatch_log_group" "processor" {
+  name              = "/aws/lambda/${var.project_name}-${var.environment}-processor"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "/aws/lambda/${var.project_name}-${var.environment}-processor"
+    Environment = var.environment
+    Worker      = "processor"
+  }
+}
+
+resource "aws_cloudwatch_log_group" "extractor" {
+  name              = "/aws/lambda/${var.project_name}-${var.environment}-extractor"
+  retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "/aws/lambda/${var.project_name}-${var.environment}-extractor"
+    Environment = var.environment
+    Worker      = "extractor"
   }
 }
 
@@ -371,21 +576,37 @@ resource "aws_lambda_function" "downloader" {
 
   environment {
     variables = {
-      # Environment config
-      ENVIRONMENT = var.environment
-      AWS_REGION  = var.aws_region
-      
-      # S3 config
-      S3_BUCKET = aws_s3_bucket.reports.id
-      
-      # SQS config
-      DLQ_URL = aws_sqs_queue.dlq.url
-      
-      # Logging
-      LOG_LEVEL = var.environment == "prod" ? "info" : "debug"
-      
-      # Metrics
+      ENVIRONMENT       = var.environment
+      SERVICE_NAME      = "downloader-worker"
+      AWS_REGION        = var.aws_region
+      STORAGE_BUCKET_OR_PATH    = aws_s3_bucket.reports.id
+      QUEUE_PROCESSOR   = aws_sqs_queue.processor.url
+      DLQ_URL          = aws_sqs_queue.dlq.url
+      LOG_LEVEL        = var.environment == "prod" ? "info" : "debug"
       METRICS_NAMESPACE = "${var.project_name}/${var.environment}"
+      
+      # Adapter configuration
+      ADAPTER_RUNTIME  = "lambda"
+      ADAPTER_STORAGE  = "s3"
+      ADAPTER_QUEUE    = "sqs"
+      ADAPTER_LOGGER   = "cloudwatch"
+      ADAPTER_METRICS  = "cloudwatch"
+      ADAPTER_DATABASE = "postgres"
+
+      CLOUDWATCH_REGION = "us-east-2"
+      CLOUDWATCH_LOG_GROUP = "/workers/downloader"
+      CLOUDWATCH_NAMESPACE = "workers/downloader"
+
+      QUEUE_DOWNLOADER=aws_sqs_queue.downloader.id
+      QUEUE_PROCESSOR=aws_sqs_queue.processor.id
+      QUEUE_EXTRACTOR=aws_sqs_queue.extractor.id
+
+      DB_HOST = "postgres"
+      DB_NAME = "audit_reports_aggregator"
+      DB_USER = "postgres"
+      DB_PASSWORD = "postgres"
+      DB_MAX_OPEN_CONNS = 25
+      DB_MAX_IDLE_CONNS = 5
     }
   }
 
@@ -409,6 +630,141 @@ resource "aws_lambda_function" "downloader" {
   ]
 }
 
+# Lambda Function for Processor
+resource "aws_lambda_function" "processor" {
+  function_name = "${var.project_name}-${var.environment}-processor"
+  role          = aws_iam_role.lambda_execution.arn
+  
+  handler = "bootstrap"
+  runtime = "provided.al2023"
+  
+  timeout     = var.lambda_timeout
+  memory_size = var.lambda_memory_size
+  
+  filename         = var.lambda_deployment_package
+  source_code_hash = fileexists(var.lambda_deployment_package) ? filebase64sha256(var.lambda_deployment_package) : null
+
+  environment {
+    variables = {
+      ENVIRONMENT       = var.environment
+      SERVICE_NAME      = "processor-worker"
+      AWS_REGION        = var.aws_region
+      STORAGE_BUCKET_OR_PATH    = aws_s3_bucket.reports.id
+      QUEUE_EXTRACTOR   = aws_sqs_queue.extractor.url
+      DLQ_URL          = aws_sqs_queue.dlq.url
+      LOG_LEVEL        = var.environment == "prod" ? "info" : "debug"
+      METRICS_NAMESPACE = "${var.project_name}/${var.environment}"
+      
+      # Adapter configuration
+      ADAPTER_RUNTIME  = "lambda"
+      ADAPTER_STORAGE  = "s3"
+      ADAPTER_QUEUE    = "sqs"
+      ADAPTER_LOGGER   = "cloudwatch"
+      ADAPTER_METRICS  = "cloudwatch"
+      ADAPTER_DATABASE = "postgres"
+
+      CLOUDWATCH_REGION = "us-east-2"
+      CLOUDWATCH_LOG_GROUP = "/workers/downloader"
+      CLOUDWATCH_NAMESPACE = "workers/downloader"
+
+      QUEUE_DOWNLOADER=aws_sqs_queue.downloader.id
+      QUEUE_PROCESSOR=aws_sqs_queue.processor.id
+      QUEUE_EXTRACTOR=aws_sqs_queue.extractor.id
+
+      DB_HOST = "postgres"
+      DB_NAME = "audit_reports_aggregator"
+      DB_USER = "postgres"
+      DB_PASSWORD = "postgres"
+      DB_MAX_OPEN_CONNS = 25
+      DB_MAX_IDLE_CONNS = 5
+    }
+  }
+
+  reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
+
+  tracing_config {
+    mode = var.environment == "prod" ? "Active" : "PassThrough"
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-processor"
+    Environment = var.environment
+    Worker      = "processor"
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_processor,
+    aws_cloudwatch_log_group.processor
+  ]
+}
+
+# Lambda Function for Extractor
+resource "aws_lambda_function" "extractor" {
+  function_name = "${var.project_name}-${var.environment}-extractor"
+  role          = aws_iam_role.lambda_execution.arn
+  
+  handler = "bootstrap"
+  runtime = "provided.al2023"
+  
+  timeout     = var.lambda_timeout
+  memory_size = var.lambda_memory_size
+  
+  filename         = var.lambda_deployment_package
+  source_code_hash = fileexists(var.lambda_deployment_package) ? filebase64sha256(var.lambda_deployment_package) : null
+
+  environment {
+    variables = {
+      ENVIRONMENT       = var.environment
+      SERVICE_NAME      = "extractor-worker"
+      AWS_REGION        = var.aws_region
+      STORAGE_BUCKET_OR_PATH    = aws_s3_bucket.reports.id
+      DLQ_URL          = aws_sqs_queue.dlq.url
+      LOG_LEVEL        = var.environment == "prod" ? "info" : "debug"
+      METRICS_NAMESPACE = "${var.project_name}/${var.environment}"
+      
+      # Adapter configuration
+      ADAPTER_RUNTIME  = "lambda"
+      ADAPTER_STORAGE  = "s3"
+      ADAPTER_QUEUE    = "sqs"
+      ADAPTER_LOGGER   = "cloudwatch"
+      ADAPTER_METRICS  = "cloudwatch"
+      ADAPTER_DATABASE = "postgres"
+
+      CLOUDWATCH_REGION = "us-east-2"
+      CLOUDWATCH_LOG_GROUP = "/workers/downloader"
+      CLOUDWATCH_NAMESPACE = "workers/downloader"
+
+      QUEUE_DOWNLOADER=aws_sqs_queue.downloader.id
+      QUEUE_PROCESSOR=aws_sqs_queue.processor.id
+      QUEUE_EXTRACTOR=aws_sqs_queue.extractor.id
+
+      DB_HOST = "postgres"
+      DB_NAME = "audit_reports_aggregator"
+      DB_USER = "postgres"
+      DB_PASSWORD = "postgres"
+      DB_MAX_OPEN_CONNS = 25
+      DB_MAX_IDLE_CONNS = 5
+    }
+  }
+
+  reserved_concurrent_executions = var.lambda_reserved_concurrent_executions
+
+  tracing_config {
+    mode = var.environment == "prod" ? "Active" : "PassThrough"
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-extractor"
+    Environment = var.environment
+    Worker      = "extractor"
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_extractor,
+    aws_cloudwatch_log_group.extractor
+  ]
+}
+
 # ==================== Event Source Mapping ====================
 
 # SQS to Lambda Event Source Mapping
@@ -425,13 +781,44 @@ resource "aws_lambda_event_source_mapping" "downloader" {
   
 }
 
+# SQS to Lambda Event Source Mapping for Processor
+resource "aws_lambda_event_source_mapping" "processor" {
+  event_source_arn = aws_sqs_queue.processor.arn
+  function_name    = aws_lambda_function.processor.arn
+  
+  batch_size                         = 10
+  maximum_batching_window_in_seconds = 5
+  
+  function_response_types = ["ReportBatchItemFailures"]
+}
+
+# SQS to Lambda Event Source Mapping for Extractor
+resource "aws_lambda_event_source_mapping" "extractor" {
+  event_source_arn = aws_sqs_queue.extractor.arn
+  function_name    = aws_lambda_function.extractor.arn
+  
+  batch_size                         = 10
+  maximum_batching_window_in_seconds = 5
+  
+  function_response_types = ["ReportBatchItemFailures"]
+}
+
 # ==================== Outputs ====================
 
-output "lambda_function" {
+output "lambda_functions" {
   value = {
-    arn           = aws_lambda_function.downloader.arn
-    function_name = aws_lambda_function.downloader.function_name
-    role_arn      = aws_iam_role.lambda_execution.arn
+    downloader = {
+      arn           = aws_lambda_function.downloader.arn
+      function_name = aws_lambda_function.downloader.function_name
+    }
+    processor = {
+      arn           = aws_lambda_function.processor.arn
+      function_name = aws_lambda_function.processor.function_name
+    }
+    extractor = {
+      arn           = aws_lambda_function.extractor.arn
+      function_name = aws_lambda_function.extractor.function_name
+    }
   }
   description = "Lambda function details"
 }
@@ -441,6 +828,14 @@ output "sqs_queues" {
     downloader = {
       url = aws_sqs_queue.downloader.url
       arn = aws_sqs_queue.downloader.arn
+    }
+    processor = {
+      url = aws_sqs_queue.processor.url
+      arn = aws_sqs_queue.processor.arn
+    }
+    extractor = {
+      url = aws_sqs_queue.extractor.url
+      arn = aws_sqs_queue.extractor.arn
     }
     dlq = {
       url = aws_sqs_queue.dlq.url
