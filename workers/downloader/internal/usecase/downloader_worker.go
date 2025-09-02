@@ -8,10 +8,13 @@ import (
 
 	"shared/application/ports"
 	"shared/domain/dto"
+	"shared/infrastructure/config"
 )
 
 type DownloaderWorker struct {
 	storage      ports.Storage
+	queue        ports.Queue
+	queueNames   config.QueueNames
 	repositories ports.Repositories
 	logger       ports.Logger
 	metrics      ports.Metrics
@@ -23,6 +26,8 @@ func NewDownloaderWorker(
 	downloadService *service.DownloadService,
 	storagePathService *service.StoragePathService,
 	storage ports.Storage,
+	queue ports.Queue,
+	queueNames config.QueueNames,
 	repositories ports.Repositories,
 	obs ports.Observability,
 ) *DownloaderWorker {
@@ -33,6 +38,8 @@ func NewDownloaderWorker(
 
 	return &DownloaderWorker{
 		storage:      storage,
+		queue:        queue,
+		queueNames:   queueNames,
 		repositories: repositories,
 		logger:       logger,
 		metrics:      metrics,
@@ -41,6 +48,8 @@ func NewDownloaderWorker(
 			downloadService,
 			storagePathService,
 			storage,
+			queue,
+			queueNames,
 			repositories,
 			logger,
 			metrics,

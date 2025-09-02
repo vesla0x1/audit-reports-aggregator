@@ -9,6 +9,7 @@ import (
 	"shared/application/ports"
 	"shared/domain/dto"
 	"shared/domain/entity"
+	"shared/infrastructure/config"
 	"time"
 )
 
@@ -16,6 +17,8 @@ type DownloadProcessor struct {
 	downloadService    *service.DownloadService
 	storagePathService *service.StoragePathService
 	storage            ports.Storage
+	queue              ports.Queue
+	queueNames         config.QueueNames
 	repositories       ports.Repositories
 	logger             ports.Logger
 	metrics            ports.Metrics
@@ -25,6 +28,8 @@ func NewDownloadProcessor(
 	downloadService *service.DownloadService,
 	storagePathService *service.StoragePathService,
 	storage ports.Storage,
+	queue ports.Queue,
+	queueNames config.QueueNames,
 	repositories ports.Repositories,
 	logger ports.Logger,
 	metrics ports.Metrics,
@@ -33,6 +38,8 @@ func NewDownloadProcessor(
 		downloadService:    downloadService,
 		storagePathService: storagePathService,
 		storage:            storage,
+		queue:              queue,
+		queueNames:         queueNames,
 		repositories:       repositories,
 		logger:             logger,
 		metrics:            metrics,
@@ -181,9 +188,31 @@ func (p *DownloadProcessor) Process(ctx context.Context, req *dto.DownloadReques
 		// Could be handled by a cleanup job
 	}
 
-	// 10. TODO: Publish process.requested event
-	// This would be done through a message queue client
-	// For now, just log it
+	// 10. Publish process.requested event
+	if p.queue != nil {
+		event := &dto.ProcessRequest{
+			EventID:   fmt.Sprintf("process-%d-%d", process.ID, time.Now().Unix()),
+			EventType: "process.requested",
+			ProcessID: process.ID,
+			Timestamp: time.Now(),
+		}
+
+		message := &ports.QueueMessage{
+			Target: p.queueNames.Processor, // Use configured processor queue name
+			Body:   event,
+		}
+
+		if err := p.queue.Publish(ctx, message); err != nil {
+			logger.Error("failed to publish process event", "error", err, "queue", p.queueNames.Processor)
+			// Non-critical - continue anyway
+			p.metrics.IncrementCounter("queue.publish.failed",
+				map[string]string{"event_type": "process.requested"})
+		} else {
+			logger.Info("published process.requested event",
+				"process_id", process.ID,
+				"queue", p.queueNames.Processor)
+		}
+	}
 	logger.Info("download completed successfully, process record created",
 		"storage_path", storagePath,
 		"file_hash", result.Hash,

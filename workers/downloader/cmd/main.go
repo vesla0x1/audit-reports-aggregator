@@ -16,6 +16,7 @@ import (
 	"shared/infrastructure/database"
 	"shared/infrastructure/http"
 	"shared/infrastructure/observability"
+	"shared/infrastructure/queue"
 	"shared/infrastructure/repository"
 	"shared/infrastructure/runtime"
 	"shared/infrastructure/storage"
@@ -34,6 +35,7 @@ type Dependencies struct {
 	database     ports.Database
 	httpClient   ports.HTTPClient
 	repositories ports.Repositories
+	queue        ports.Queue
 }
 
 // loadConfiguration loads and validates the application configuration
@@ -78,11 +80,21 @@ func initializeDependencies(cfg *config.Config, obs ports.Observability) *Depend
 		log.Fatalf("Failed to create http client: %v", err)
 	}
 
+	// Queue initialization - optional component
+	var publisher ports.Queue
+	if cfg.Adapters.Queue != "" {
+		publisher, err = queue.CreateQueue(cfg, obs)
+		if err != nil {
+			log.Fatalf("Failed to create queue: %v", err)
+		}
+	}
+
 	return &Dependencies{
 		storage:      storageClient,
 		database:     db,
 		httpClient:   httpClient,
 		repositories: repositories,
+		queue:        publisher,
 	}
 }
 
@@ -102,6 +114,8 @@ func buildApplication(cfg *config.Config, deps *Dependencies, obs ports.Observab
 		service.NewDownloadService(deps.httpClient),
 		service.NewStoragePathService(),
 		deps.storage,
+		deps.queue,
+		cfg.Queue.Queues,
 		deps.repositories,
 		obs,
 	)
