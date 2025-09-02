@@ -82,6 +82,26 @@ services:
     networks:
       - ${DOCKER_NETWORK:-audit-network}
 
+  downloader:
+    build:
+      dockerfile: ./workers/downloader/Dockerfile
+    image: downloader-worker:latest  # Optional: name the built image
+    container_name: downloader-worker
+    ports:
+      - "8080:8080"
+    volumes:
+      - /tmp/storage:/tmp/storage
+    env_file:
+      - ./workers/downloader/.env.local
+    environment: # overrides .env (we are running on audit-network)
+      - DB_HOST=postgres
+      - RABBITMQ_URL=amqp://admin:admin@audit_rabbitmq:5672/
+    depends_on:
+    - postgres
+    - rabbitmq
+    networks:
+    - ${DOCKER_NETWORK:-audit-network}
+
 volumes:
   terraform_cache:
   postgres_data:

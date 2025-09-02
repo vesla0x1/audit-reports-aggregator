@@ -4,7 +4,7 @@
 
 # Project specific variables
 BINARY_NAME=downloader
-DOCKER_IMAGE=audit-downloader
+DOCKER_IMAGE=downloader-worker
 DOCKER_TAG=latest
 LAMBDA_PACKAGE=downloader.zip
 
