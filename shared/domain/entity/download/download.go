@@ -18,8 +18,6 @@ type Download struct {
 	StartedAt     *time.Time `db:"started_at"`
 	CompletedAt   *time.Time `db:"completed_at"`
 	UpdatedAt     time.Time  `db:"updated_at"`
-
-	MaxAttempts int `db:"-"`
 }
 
 func NewDownload(reportID int64, maxAttempts int) *Download {
@@ -30,7 +28,6 @@ func NewDownload(reportID int64, maxAttempts int) *Download {
 		AttemptCount: 0,
 		CreatedAt:    now,
 		UpdatedAt:    now,
-		MaxAttempts:  maxAttempts,
 	}
 }
 
@@ -45,7 +42,7 @@ func NewDownloadWithDefaults(reportID int64) *Download {
 // CanStart checks if the download can be started
 func (d *Download) CanStart() bool {
 	return d.Status == StatusPending ||
-		(d.Status == StatusFailed && d.AttemptCount < d.MaxAttempts)
+		(d.Status == StatusFailed && d.AttemptCount < d.MaxAttempts())
 }
 
 // Start begins or retries a download
@@ -61,7 +58,7 @@ func (d *Download) Start() error {
 	}
 
 	// Business rule: Check max attempts
-	if d.AttemptCount >= d.MaxAttempts {
+	if d.AttemptCount >= d.MaxAttempts() {
 		return ErrMaxAttemptsExceeded
 	}
 
@@ -124,6 +121,10 @@ func (d *Download) Fail(errorMessage string) error {
 	return nil
 }
 
+func (d *Download) MaxAttempts() int {
+	return 3
+}
+
 // ============================================================================
 // QUERY METHODS (Business logic queries)
 // ============================================================================
@@ -145,22 +146,22 @@ func (d *Download) IsFailed() bool {
 
 // CanRetry checks if the download can be retried
 func (d *Download) CanRetry() bool {
-	return d.Status == StatusFailed && d.AttemptCount < d.MaxAttempts
+	return d.Status == StatusFailed && d.AttemptCount < d.MaxAttempts()
 }
 
 // ShouldRetry determines if download should be retried
 func (d *Download) ShouldRetry() bool {
-	return d.Status == StatusFailed && d.AttemptCount < d.MaxAttempts
+	return d.Status == StatusFailed && d.AttemptCount < d.MaxAttempts()
 }
 
 // HasExceededMaxAttempts checks if max attempts have been exceeded
 func (d *Download) HasExceededMaxAttempts() bool {
-	return d.AttemptCount >= d.MaxAttempts
+	return d.AttemptCount >= d.MaxAttempts()
 }
 
 // AttemptsRemaining returns the number of attempts remaining
 func (d *Download) AttemptsRemaining() int {
-	remaining := d.MaxAttempts - d.AttemptCount
+	remaining := d.MaxAttempts() - d.AttemptCount
 	if remaining < 0 {
 		return 0
 	}
