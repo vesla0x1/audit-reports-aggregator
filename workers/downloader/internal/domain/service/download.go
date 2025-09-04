@@ -2,87 +2,57 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"io"
+	"errors"
+	"net/http"
 
-	"downloader/internal/domain/model"
-	"downloader/internal/domain/util"
-	"shared/application/ports"
+	"downloader/internal/application/ports"
+	"downloader/internal/domain/entity/downloadresult"
 )
 
 type DownloadService struct {
-	httpClient ports.HTTPClient
+	httpClient  ports.HTTPClient
+	maxFileSize int64
+	userAgent   string
 }
 
-func NewDownloadService(httpClient ports.HTTPClient) *DownloadService {
+func NewDownloadService(httpClient ports.HTTPClient, maxFileSize int64) *DownloadService {
 	return &DownloadService{
-		httpClient: httpClient,
+		httpClient:  httpClient,
+		maxFileSize: maxFileSize,
+		userAgent:   "AuditReportDownloader/1.0",
 	}
 }
 
-func (s *DownloadService) Download(ctx context.Context, url string) (*model.DownloadResult, error) {
-	headers := map[string]string{
-		"User-Agent": "AuditReportDownloader/1.0",
-	}
-
-	reader, respHeaders, err := s.httpClient.Download(ctx, url, headers)
+func (s *DownloadService) Download(ctx context.Context, url string) (*downloadresult.DownloadResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, model.NewDownloadError(model.NetworkError,
-			fmt.Sprintf("failed to download file: %v", err), url)
+		return nil, ErrRequestCreation(err)
 	}
-	defer reader.Close()
 
-	content, err := s.readContent(reader, respHeaders)
+	req.Header.Set("User-Agent", s.userAgent)
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, ErrHTTPRequest(err)
 	}
 
-	return &model.DownloadResult{
-		Content:     content,
-		Hash:        util.CalculateHash(content),
-		Size:        int64(len(content)),
-		ContentType: util.ExtractContentType(respHeaders),
-		Extension:   util.DetermineExtension(url, util.ExtractContentType(respHeaders)),
-		URL:         url,
-	}, nil
-}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, ErrUnexpectedStatus(resp.StatusCode)
+	}
 
-func (s *DownloadService) readContent(reader io.ReadCloser, headers map[string]string) ([]byte, error) {
-	const maxFileSize = 100 * 1024 * 1024 // 100MB
+	result, err := downloadresult.NewDownloadResultFromReader(
+		resp.Body,
+		url,
+		resp.Header.Get("Content-Type"),
+		s.maxFileSize,
+	)
 
-	// Check content length if provided
-	if contentLength := headers["content-length"]; contentLength != "" {
-		var size int64
-		fmt.Sscanf(contentLength, "%d", &size)
-		if size > maxFileSize {
-			return nil, model.NewDownloadError(
-				model.FileTooLargeError,
-				fmt.Sprintf("file too large: %d bytes (max: %d)", size, maxFileSize),
-				"",
-			)
+	if err != nil {
+		if errors.Is(err, downloadresult.ErrSizeExceeded(s.maxFileSize)) {
+			return nil, ErrFileTooLarge
 		}
+		return nil, ErrReadResponse(err)
 	}
 
-	// Use LimitReader to prevent excessive memory usage
-	limitedReader := io.LimitReader(reader, maxFileSize+1)
-
-	content, err := io.ReadAll(limitedReader)
-	if err != nil {
-		return nil, model.NewDownloadError(
-			model.ReadError,
-			fmt.Sprintf("failed to read response body: %v", err),
-			"",
-		)
-	}
-
-	// Check if we hit the limit
-	if len(content) > maxFileSize {
-		return nil, model.NewDownloadError(
-			model.FileTooLargeError,
-			fmt.Sprintf("file exceeds maximum size of %d bytes", maxFileSize),
-			"",
-		)
-	}
-
-	return content, nil
+	return result, nil
 }

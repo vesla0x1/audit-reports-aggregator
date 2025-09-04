@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"shared/domain/entity"
+	"shared/domain/entity/process"
 
 	"github.com/Masterminds/squirrel"
 )
@@ -77,7 +78,7 @@ func (r *processRepository) GetByDownloadID(ctx context.Context, downloadID int6
 func (r *processRepository) GetPendingProcesses(ctx context.Context, limit int) ([]*entity.Process, error) {
 	query := r.qb.Select("*").
 		From("processes").
-		Where(squirrel.Eq{"status": entity.ProcessStatusPending}).
+		Where(squirrel.Eq{"status": process.StatusPending}).
 		OrderBy("created_at ASC").
 		Limit(uint64(limit))
 

@@ -3,16 +3,16 @@ package repository
 import (
 	"context"
 	"fmt"
-	"shared/domain/entity"
+	"shared/domain/entity/download"
 
 	"github.com/Masterminds/squirrel"
 )
 
 type downloadRepository struct {
-	*baseRepository[entity.Download]
+	*baseRepository[download.Download]
 }
 
-func (r *downloadRepository) Create(ctx context.Context, download *entity.Download) error {
+func (r *downloadRepository) Create(ctx context.Context, download *download.Download) error {
 	query := r.qb.Insert("downloads").
 		Columns("report_id", "status", "attempt_count", "created_at", "updated_at").
 		Values(download.ReportID, download.Status, download.AttemptCount, download.CreatedAt, download.UpdatedAt).
@@ -27,7 +27,7 @@ func (r *downloadRepository) Create(ctx context.Context, download *entity.Downlo
 	return nil
 }
 
-func (r *downloadRepository) Update(ctx context.Context, download *entity.Download) error {
+func (r *downloadRepository) Update(ctx context.Context, download *download.Download) error {
 	query := r.qb.Update("downloads").
 		Set("status", download.Status).
 		Set("attempt_count", download.AttemptCount).
@@ -60,7 +60,7 @@ func (r *downloadRepository) Update(ctx context.Context, download *entity.Downlo
 	return err
 }
 
-func (r *downloadRepository) GetByReportID(ctx context.Context, reportID int64) (*entity.Download, error) {
+func (r *downloadRepository) GetByReportID(ctx context.Context, reportID int64) (*download.Download, error) {
 	query := r.qb.Select("*").
 		From("downloads").
 		Where(squirrel.Eq{"report_id": reportID})
@@ -68,7 +68,7 @@ func (r *downloadRepository) GetByReportID(ctx context.Context, reportID int64) 
 	sql, args, _ := query.ToSql()
 	row := r.db.QueryRow(ctx, sql, args...)
 
-	var d entity.Download
+	var d download.Download
 	err := row.Scan(
 		&d.ID, &d.ReportID, &d.StoragePath, &d.FileHash,
 		&d.FileExtension, &d.Status, &d.ErrorMessage,
@@ -82,10 +82,10 @@ func (r *downloadRepository) GetByReportID(ctx context.Context, reportID int64) 
 	return &d, nil
 }
 
-func (r *downloadRepository) GetPendingDownloads(ctx context.Context, limit int) ([]*entity.Download, error) {
+func (r *downloadRepository) GetPendingDownloads(ctx context.Context, limit int) ([]*download.Download, error) {
 	query := r.qb.Select("*").
 		From("downloads").
-		Where(squirrel.Eq{"status": entity.DownloadStatusPending}).
+		Where(squirrel.Eq{"status": download.StatusPending}).
 		OrderBy("created_at ASC").
 		Limit(uint64(limit))
 
@@ -96,9 +96,9 @@ func (r *downloadRepository) GetPendingDownloads(ctx context.Context, limit int)
 	}
 	defer rows.Close()
 
-	var downloads []*entity.Download
+	var downloads []*download.Download
 	for rows.Next() {
-		var d entity.Download
+		var d download.Download
 		err := rows.Scan(
 			&d.ID, &d.ReportID, &d.StoragePath, &d.FileHash,
 			&d.FileExtension, &d.Status, &d.ErrorMessage,

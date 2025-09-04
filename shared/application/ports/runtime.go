@@ -22,13 +22,7 @@ func (r *RuntimeRequest) Unmarshal(v interface{}) error {
 type RuntimeResponse struct {
 	Success bool            `json:"success"`
 	Data    json.RawMessage `json:"data,omitempty"`
-	Error   *ErrorInfo      `json:"error,omitempty"`
-}
-
-type ErrorInfo struct {
-	Code      string `json:"code"`
-	Message   string `json:"message"`
-	Retryable bool   `json:"retryable"`
+	Error   string          `json:"error,omitempty"`
 }
 
 // Handler processes requests through middleware chains

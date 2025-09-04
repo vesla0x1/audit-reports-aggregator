@@ -4,17 +4,18 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"shared/application/ports"
+	"net/http"
 	"time"
 
 	// Domain layer
+	"downloader/internal/application/handler"
+	"downloader/internal/application/ports"
+	"downloader/internal/application/usecase"
 	"downloader/internal/domain/service"
-	"downloader/internal/usecase"
 
 	// Infrastructure layer
 	"shared/infrastructure/config"
 	"shared/infrastructure/database"
-	"shared/infrastructure/http"
 	"shared/infrastructure/observability"
 	"shared/infrastructure/queue"
 	"shared/infrastructure/repository"
@@ -62,19 +63,18 @@ func initializeDependencies(cfg *config.Config, obs ports.Observability) *Depend
 		log.Fatalf("Failed to ping database: %v", err)
 	}
 
-	// Storage initialization - component handles its own logging
+	// Storage initialization
 	storageClient, err := storage.CreateStorage(cfg, obs)
 	if err != nil {
 		log.Fatalf("Failed to create storage: %v", err)
 	}
 
-	// HTTP client - component handles its own logging
-	httpClient, err := http.CreateHTTPClient(cfg.HTTP, obs)
-	if err != nil {
-		log.Fatalf("Failed to create http client: %v", err)
+	// HTTP client
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
 	}
 
-	// Repositories - component handles its own logging
+	// Repositories
 	repositories, err := repository.NewRepositories(db, obs)
 	if err != nil {
 		log.Fatalf("Failed to create http client: %v", err)
@@ -110,15 +110,21 @@ func initializeObservability(cfg *config.Config) ports.Observability {
 // buildApplication assembles the application layers
 func buildApplication(cfg *config.Config, deps *Dependencies, obs ports.Observability) (ports.Runtime, error) {
 	// Create use case
-	handler := usecase.NewDownloaderWorker(
-		service.NewDownloadService(deps.httpClient),
-		service.NewStoragePathService(),
+	downloadService := service.NewDownloadService(
+		deps.httpClient,
+		100*1024*1024, // (hardcoding 100MB by now)
+	)
+
+	downloadFile, err := usecase.NewDownloadFile(
+		downloadService,
 		deps.storage,
 		deps.queue,
 		cfg.Queue.Queues,
 		deps.repositories,
 		obs,
 	)
+
+	handler := handler.NewDownloadHandler(downloadFile, obs)
 
 	// Create runtime
 	runtime, err := runtime.Create(cfg, handler, obs)

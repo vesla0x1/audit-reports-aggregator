@@ -183,7 +183,7 @@ func (httpRuntime *httpRuntime) sendErrorResponse(resWriter http.ResponseWriter,
 
 	resp := ports.RuntimeResponse{
 		Success: false,
-		Error:   &ports.ErrorInfo{},
+		Error:   err.Error(),
 	}
 
 	if err := json.NewEncoder(resWriter).Encode(resp); err != nil {
@@ -212,7 +212,6 @@ func (httpRuntime *httpRuntime) handleBadRequest(resWriter http.ResponseWriter, 
 
 	resp := ports.RuntimeResponse{
 		Success: false,
-		Error:   &ports.ErrorInfo{},
 	}
 
 	json.NewEncoder(resWriter).Encode(resp)
